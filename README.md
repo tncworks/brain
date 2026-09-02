@@ -20,7 +20,24 @@ Every route except `/unlock` is protected by `src/middleware.ts`. The password l
 
 Hit **Log solve**, press `n`, or type a title into search and choose "Log … as a new solve". The problem appears as a node next to its topic, goes on the redo ladder immediately, and shows up in the redo tray 3 days later (then 7, 14, 30 days after each redo).
 
-Logged problems and redo clicks live in `localStorage` (`dsa-brain:problems:v1`, `dsa-brain:redos:v1`), so they are per-browser. To make one permanent, open its card, click **Copy for data.ts**, paste the line into `problems`, and push. Delete removes it from the browser only.
+## Where your logs live
+
+Everything you do in the app (logged problems, redo clicks) is one small JSON document:
+
+- **Local cache** — `localStorage` key `dsa-brain:state:v1`, always written first, so the app works offline.
+- **Cloud copy** — behind `/api/state` in Upstash Redis when a database is connected. Every change is pushed after ~350 ms; every time a tab is opened or focused it pulls. The copy with the newer `updatedAt` wins, so your phone and laptop stay in step.
+
+The wordmark shows the state: **synced**, **saving**, **offline** (changes kept locally, retried on reconnect), or **local** (no database connected).
+
+### Connecting the database (one-time, ~2 minutes)
+
+1. Vercel dashboard → your project → **Storage** tab → **Create Database** → **Upstash** → **Redis** → Free plan.
+2. Connect it to this project (all environments). Vercel injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_*`); both are supported.
+3. **Redeploy** once so the new env vars take effect.
+
+The state route sits behind the same password cookie as the rest of the site. `npm run dev` without a database uses an in-memory store so the sync path still runs locally.
+
+To bake a logged problem into the repo, open its card and click **Copy for data.ts**.
 
 ## Adding data
 

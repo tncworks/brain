@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { StatusFilter } from "./App";
 import { topics, type Topic, type TopicId } from "@/lib/data";
 import { search, type SearchDoc } from "@/lib/graph";
+import type { SyncStatus } from "@/lib/store";
 
 interface Stats {
   solved: number;
@@ -16,6 +17,7 @@ interface Stats {
 
 interface Props {
   stats: Stats;
+  sync: SyncStatus;
   docs: SearchDoc[];
   statusFilter: StatusFilter;
   onStatusFilter: (f: StatusFilter) => void;
@@ -35,19 +37,17 @@ const CHIPS: { id: StatusFilter; label: string; dot?: string }[] = [
   { id: "locked", label: "Locked", dot: "bg-locked" },
 ];
 
-export default function TopBar({ stats, docs, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, onLog, hoverLabel }: Props) {
+export default function TopBar({ stats, sync, docs, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, onLog, hoverLabel }: Props) {
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         {/* Wordmark */}
-        <div className="pointer-events-auto glass flex h-11 items-center gap-3 rounded-full pl-4 pr-4">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-done opacity-40" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-done" />
-          </span>
+        <div className="pointer-events-auto glass flex h-11 items-center gap-3 rounded-full pl-4 pr-4" title={SYNC_HINT[sync]}>
+          <SyncDot sync={sync} />
           <span className="font-serif text-[19px] leading-none tracking-tight text-white">
             DSA <span className="italic text-mist/80">Brain</span>
           </span>
+          <span className={`-ml-1 text-[10px] uppercase tracking-[0.14em] ${SYNC_TONE[sync]}`}>{SYNC_LABEL[sync]}</span>
         </div>
 
         <Search docs={docs} onPick={onPick} onLog={onLog} />
@@ -132,6 +132,42 @@ export default function TopBar({ stats, docs, statusFilter, onStatusFilter, topi
         )}
       </div>
     </header>
+  );
+}
+
+const SYNC_LABEL: Record<SyncStatus, string> = {
+  booting: "",
+  off: "local",
+  syncing: "saving",
+  synced: "synced",
+  offline: "offline",
+  dev: "dev store",
+};
+const SYNC_TONE: Record<SyncStatus, string> = {
+  booting: "text-mist/40",
+  off: "text-mist/40",
+  syncing: "text-due",
+  synced: "text-done/80",
+  offline: "text-hard/80",
+  dev: "text-progress/80",
+};
+const SYNC_HINT: Record<SyncStatus, string> = {
+  booting: "Connecting…",
+  off: "No database connected — everything is saved in this browser only. Add Upstash Redis on Vercel to sync across devices.",
+  syncing: "Saving to the cloud…",
+  synced: "Saved to the cloud. Your other devices pick it up when they next open or focus the tab.",
+  offline: "Couldn't reach the server. Changes are safe here and will sync when you're back online.",
+  dev: "Development in-memory store (no database configured).",
+};
+
+function SyncDot({ sync }: { sync: SyncStatus }) {
+  const color = sync === "synced" || sync === "dev" ? "bg-done" : sync === "syncing" ? "bg-due" : sync === "offline" ? "bg-hard" : "bg-mist/40";
+  const ping = sync === "synced" || sync === "syncing";
+  return (
+    <span className="relative flex h-2.5 w-2.5">
+      {ping && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${color} opacity-40`} />}
+      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${color}`} />
+    </span>
   );
 }
 

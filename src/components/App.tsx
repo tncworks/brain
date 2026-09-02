@@ -10,17 +10,8 @@ import Toast from "./Toast";
 import LogSolve from "./LogSolve";
 import { CURRENT_TOPIC, problems as seedProblems, topics, type Problem, type TopicId } from "@/lib/data";
 import { STATUS_COLOR, buildGraph, buildSearchDocs, groupByTopic, problemVisualStatus, topicById, topicVisualStatus } from "@/lib/graph";
-import {
-  deriveProblem,
-  formatDate,
-  loadCustomProblems,
-  loadRedoLog,
-  saveCustomProblems,
-  saveRedoLog,
-  todayISO,
-  type DerivedProblem,
-  type RedoLog,
-} from "@/lib/schedule";
+import { deriveProblem, formatDate, todayISO, type DerivedProblem, type RedoLog } from "@/lib/schedule";
+import { fetchRemote, loadLocal, pushRemote, saveLocal, type BrainState, type SyncStatus } from "@/lib/store";
 
 export type StatusFilter = "all" | "done" | "due" | "play" | "locked";
 
@@ -42,15 +33,102 @@ export default function App() {
   const [topicFilter, setTopicFilter] = useState<TopicId | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [logging, setLogging] = useState<{ title: string } | null>(null);
+  const [sync, setSync] = useState<SyncStatus>("booting");
   const cardRef = useRef<HTMLDivElement>(null);
   const nonce = useRef(0);
 
+  /* ── Persistence: local cache + cloud document, newer updatedAt wins ── */
+  const stateRef = useRef<BrainState>({ redos: {}, problems: [], updatedAt: 0 });
+  const pushTimer = useRef<number | null>(null);
+  const backendRef = useRef<"redis" | "memory" | null>(null);
+  const okStatus = () => (backendRef.current === "memory" ? "dev" : "synced");
+
+  const adopt = useCallback((s: BrainState) => {
+    stateRef.current = s;
+    setLog(s.redos);
+    setCustom(s.problems.map((p) => ({ ...p, custom: true })));
+    saveLocal(s);
+  }, []);
+
+  const push = useCallback(
+    async (s: BrainState) => {
+      setSync((cur) => (cur === "off" ? "off" : "syncing"));
+      try {
+        const r = await pushRemote(s);
+        if ("configured" in r) setSync("off");
+        else if (r.ok) setSync(okStatus());
+        else {
+          // a newer copy exists on the server — take it
+          if (r.state.updatedAt > stateRef.current.updatedAt) adopt(r.state);
+          setSync(okStatus());
+        }
+      } catch {
+        setSync("offline");
+      }
+    },
+    [adopt],
+  );
+
+  const commit = useCallback(
+    (patch: Partial<Pick<BrainState, "redos" | "problems">>) => {
+      const next: BrainState = { ...stateRef.current, ...patch, updatedAt: Date.now() };
+      stateRef.current = next;
+      if (patch.redos) setLog(patch.redos);
+      if (patch.problems) setCustom(patch.problems);
+      saveLocal(next);
+      if (pushTimer.current) window.clearTimeout(pushTimer.current);
+      pushTimer.current = window.setTimeout(() => push(next), 350);
+    },
+    [push],
+  );
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await fetchRemote();
+      if (!r.configured) {
+        setSync("off");
+        return;
+      }
+      backendRef.current = r.backend ?? "redis";
+      const local = stateRef.current;
+      if (r.state && r.state.updatedAt > local.updatedAt) adopt(r.state);
+      else if (local.updatedAt > (r.state?.updatedAt ?? 0)) {
+        await push(local);
+        return;
+      }
+      setSync(okStatus());
+    } catch {
+      setSync("offline");
+    }
+  }, [adopt, push]);
+
   useEffect(() => {
     setToday(todayISO());
-    setLog(loadRedoLog());
-    setCustom(loadCustomProblems());
+    const local = loadLocal();
+    stateRef.current = local;
+    setLog(local.redos);
+    setCustom(local.problems.map((p) => ({ ...p, custom: true })));
     setMounted(true);
-  }, []);
+    void refresh();
+  }, [refresh]);
+
+  // Pull whenever you come back to the tab or regain network — that's how the phone sees the laptop's redos.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setToday(todayISO());
+        void refresh();
+      }
+    };
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [refresh]);
 
   /* ── Derived data ────────────────────────────────────────────────── */
   const allProblems = useMemo(() => [...seedProblems, ...custom], [custom]);
@@ -171,37 +249,33 @@ export default function App() {
     (id: string) => {
       const before = log;
       const next: RedoLog = { ...log, [id]: Array.from(new Set([...(log[id] ?? []), today])).sort() };
-      setLog(next);
-      saveRedoLog(next);
+      commit({ redos: next });
       const after = deriveProblem(derived.get(id)!, next[id], today);
       const label = after.lc ? `LC ${after.lc}` : after.title;
       setToast({
         key: Date.now(),
         text: `${label} redone · next pass ${formatDate(after.nextDue)}`,
         undo: () => {
-          setLog(before);
-          saveRedoLog(before);
+          commit({ redos: before });
           setToast(null);
         },
       });
       setSelectedId(id);
       setFocus({ id, nonce: ++nonce.current, color: STATUS_COLOR.done });
     },
-    [log, today, derived],
+    [log, today, derived, commit],
   );
 
   const addProblem = useCallback(
     (p: Problem) => {
-      const next = [...custom, p];
-      setCustom(next);
-      saveCustomProblems(next);
+      commit({ problems: [...custom, p] });
       setLogging(null);
       setSelectedId(p.id);
       setFocus({ id: p.id, nonce: ++nonce.current, color: STATUS_COLOR.done, zoom: 1.5 });
       const d = deriveProblem(p, [], today);
       setToast({ key: Date.now(), text: `${p.lc ? `LC ${p.lc}` : p.title} logged · first redo ${formatDate(d.nextDue)}` });
     },
-    [custom, today],
+    [custom, today, commit],
   );
 
   const deleteProblem = useCallback(
@@ -212,28 +286,18 @@ export default function App() {
       const nextLog = { ...log };
       const removedLog = nextLog[id];
       delete nextLog[id];
-      setCustom(next);
-      saveCustomProblems(next);
-      setLog(nextLog);
-      saveRedoLog(nextLog);
+      commit({ problems: next, redos: nextLog });
       setSelectedId(null);
       setToast({
         key: Date.now(),
         text: `${removed.lc ? `LC ${removed.lc}` : removed.title} deleted`,
         undo: () => {
-          const restored = [...next, removed];
-          setCustom(restored);
-          saveCustomProblems(restored);
-          if (removedLog) {
-            const l = { ...nextLog, [id]: removedLog };
-            setLog(l);
-            saveRedoLog(l);
-          }
+          commit({ problems: [...next, removed], redos: removedLog ? { ...nextLog, [id]: removedLog } : nextLog });
           setToast(null);
         },
       });
     },
-    [custom, log],
+    [custom, log, commit],
   );
 
   const isolate = useCallback((id: TopicId | null) => {
@@ -308,6 +372,7 @@ export default function App() {
 
       <TopBar
         stats={stats}
+        sync={sync}
         docs={docs}
         statusFilter={statusFilter}
         onStatusFilter={setStatusFilter}
