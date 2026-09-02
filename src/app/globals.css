@@ -4,8 +4,8 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: var(--font-fraunces), "Instrument Serif", Georgia, "Times New Roman", serif;
 
-  --color-ink: #090b12;
-  --color-ink-2: #10131f;
+  --color-ink: #000000;
+  --color-ink-2: #0b0b0d;
   --color-mist: #c6ccdb;
 
   --color-done: #7fd9a6;
@@ -54,6 +54,21 @@
   }
 }
 
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
 @keyframes nagtext {
   0%,
   100% {
@@ -73,7 +88,7 @@ body {
 }
 
 .glass {
-  background: rgba(13, 16, 27, 0.72);
+  background: rgba(7, 7, 9, 0.78);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -87,18 +102,16 @@ body {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(1200px 800px at 50% 40%, rgba(58, 68, 120, 0.22), transparent 60%),
-    radial-gradient(700px 500px at 15% 90%, rgba(127, 217, 166, 0.06), transparent 60%),
-    radial-gradient(700px 500px at 88% 10%, rgba(110, 166, 255, 0.07), transparent 60%),
-    linear-gradient(180deg, #0b0e18 0%, #090b12 100%);
+    radial-gradient(900px 600px at 50% 42%, rgba(255, 255, 255, 0.035), transparent 62%),
+    #000;
 }
 
 .grain {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.045;
-  mix-blend-mode: overlay;
+  opacity: 0.06;
+  mix-blend-mode: screen;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -112,4 +125,23 @@ body {
 *::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
+}
+
+.field {
+  width: 100%;
+  height: 2.5rem;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0 0.85rem;
+  font-size: 13.5px;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.field::placeholder {
+  color: rgba(198, 204, 219, 0.35);
+}
+.field:focus {
+  border-color: rgba(255, 255, 255, 0.28);
 }

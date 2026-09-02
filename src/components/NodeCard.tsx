@@ -1,19 +1,21 @@
 "use client";
 
-import { prerequisites, type TopicId } from "@/lib/data";
-import { DIFFICULTY_COLOR, STATUS_COLOR, STATUS_LABEL, problemVisualStatus, problemsByTopic, topicById, topicVisualStatus, type GNode } from "@/lib/graph";
-import { REDO_LADDER } from "@/lib/data";
-import { formatDate, type DerivedProblem } from "@/lib/schedule";
+import { useState } from "react";
+import { prerequisites, REDO_LADDER, type TopicId } from "@/lib/data";
+import { DIFFICULTY_COLOR, STATUS_COLOR, STATUS_LABEL, problemVisualStatus, topicById, topicVisualStatus, type GNode } from "@/lib/graph";
+import { formatDate, problemToDataLine, type DerivedProblem } from "@/lib/schedule";
 
 interface Props {
   cardRef: React.RefObject<HTMLDivElement | null>;
   node: GNode;
   derived: Map<string, DerivedProblem>;
+  byTopic: Map<TopicId, string[]>;
   today: string;
   topicFilter: TopicId | null;
   onSelect: (id: string) => void;
   onIsolate: (id: TopicId | null) => void;
   onMarkRedone: (id: string) => void;
+  onDelete: (id: string) => void;
   onClose: () => void;
 }
 
@@ -55,8 +57,19 @@ function Label({ children }: { children: React.ReactNode }) {
 
 /* ── Problem ───────────────────────────────────────────────────────────── */
 
-function ProblemBody({ node, derived, onSelect, onMarkRedone }: Props) {
+function ProblemBody({ node, derived, onSelect, onMarkRedone, onDelete }: Props) {
   const p = derived.get(node.id)!;
+  const [confirm, setConfirm] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(problemToDataLine(p, p.redos));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
   const status = problemVisualStatus(p);
   const color = STATUS_COLOR[status];
   const dcolor = DIFFICULTY_COLOR[p.difficulty];
@@ -84,6 +97,11 @@ function ProblemBody({ node, derived, onSelect, onMarkRedone }: Props) {
         <Pill color={dcolor} hollow>
           {p.difficulty}
         </Pill>
+        {p.custom && (
+          <Pill color="#c6ccdb" hollow>
+            logged here
+          </Pill>
+        )}
       </div>
       {p.lc && <div className="text-[11px] font-medium tracking-[0.12em] text-mist/45">LEETCODE {p.lc}</div>}
       <h2 className="mt-0.5 font-serif text-[24px] leading-[1.15] text-white">{p.title}</h2>
@@ -159,17 +177,40 @@ function ProblemBody({ node, derived, onSelect, onMarkRedone }: Props) {
           </a>
         )}
       </div>
+
+      {p.custom && (
+        <div className="mt-3 flex items-center justify-between gap-2 text-[11.5px]">
+          <button onClick={copy} className="text-mist/50 transition hover:text-white" title="Copy a data.ts line so this survives a redeploy">
+            {copied ? "Copied ✓" : "Copy for data.ts"}
+          </button>
+          {confirm ? (
+            <span className="flex items-center gap-2">
+              <span className="text-mist/50">Delete this problem?</span>
+              <button onClick={() => onDelete(p.id)} className="rounded-full bg-hard/20 px-2.5 py-1 text-hard transition hover:bg-hard hover:text-ink">
+                Delete
+              </button>
+              <button onClick={() => setConfirm(false)} className="text-mist/50 hover:text-white">
+                Keep
+              </button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-mist/40 transition hover:text-hard">
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ── Topic ─────────────────────────────────────────────────────────────── */
 
-function TopicBody({ node, derived, topicFilter, onSelect, onIsolate }: Props) {
+function TopicBody({ node, derived, byTopic, topicFilter, onSelect, onIsolate }: Props) {
   const topic = topicById.get(node.topicId)!;
   const status = topicVisualStatus(topic);
   const color = STATUS_COLOR[status];
-  const ids = problemsByTopic.get(topic.id)!;
+  const ids = byTopic.get(topic.id) ?? [];
   const ps = ids.map((id) => derived.get(id)!);
   const solved = ps.filter((p) => p.state !== "pending");
   const retained = ps.filter((p) => p.redos.length > 0 && p.state !== "due");

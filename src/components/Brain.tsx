@@ -8,6 +8,7 @@ import {
   forceSimulation,
   forceX,
   forceY,
+  type ForceLink,
   type Simulation,
 } from "d3-force";
 import type { Difficulty } from "@/lib/data";
@@ -101,12 +102,46 @@ export default function Brain(props: BrainProps) {
   const hoverRef = useRef<string | null>(null);
   const simRef = useRef<Simulation<GNode, GLink> | null>(null);
   const bornRef = useRef<Map<string, number>>(new Map());
+  /** The simulation's own node/link arrays. Node objects persist across graph rebuilds so positions survive. */
+  const liveRef = useRef<{ graph: Graph; nodes: GNode[]; links: GLink[]; byId: Map<string, GNode> } | null>(null);
+
+  /* Reconcile a rebuilt graph into the running simulation: keep old nodes, birth new ones next to their topic. */
+  useEffect(() => {
+    const sim = simRef.current;
+    const live = liveRef.current;
+    if (!sim || !live || live.graph === props.graph) return;
+    const now = performance.now();
+    const nodes: GNode[] = props.graph.nodes.map((n) => {
+      const prev = live.byId.get(n.id);
+      if (prev) {
+        prev.r = n.r;
+        prev.label = n.label;
+        prev.topicId = n.topicId;
+        return prev;
+      }
+      const parent = live.byId.get(n.topicId);
+      const a = Math.random() * Math.PI * 2;
+      const d = parent ? parent.r + 34 : 40;
+      n.x = (parent?.x ?? 0) + Math.cos(a) * d;
+      n.y = (parent?.y ?? 0) + Math.sin(a) * d;
+      n.vx = 0;
+      n.vy = 0;
+      bornRef.current.set(n.id, now + 60);
+      return n;
+    });
+    const byId = new Map(nodes.map((n) => [n.id, n] as const));
+    const links: GLink[] = props.graph.links.map((l) => ({ kind: l.kind, source: byId.get(l.source.id)!, target: byId.get(l.target.id)! }));
+    liveRef.current = { graph: props.graph, nodes, links, byId };
+    sim.nodes(nodes);
+    (sim.force("link") as ForceLink<GNode, GLink>).links(links);
+    sim.alpha(Math.max(sim.alpha(), 0.45));
+  }, [props.graph]);
 
   /* Focus: glide the camera to a node and drop a locating pulse. */
   useEffect(() => {
     const f = props.focus;
     if (!f) return;
-    const node = props.graph.byId.get(f.id);
+    const node = liveRef.current?.byId.get(f.id);
     if (!node) return;
     const cam = camRef.current;
     const { w, h, left, top } = sizeRef.current;
@@ -136,7 +171,9 @@ export default function Brain(props: BrainProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const { graph } = propsRef.current;
-    const { nodes, links } = graph;
+    const nodes = graph.nodes.slice();
+    const links = graph.links.slice();
+    liveRef.current = { graph, nodes, links, byId: new Map(nodes.map((n) => [n.id, n] as const)) };
 
     /* Fonts — read the next/font family names off the root element. */
     const rootStyle = getComputedStyle(document.documentElement);
@@ -228,7 +265,7 @@ export default function Brain(props: BrainProps) {
       const slack = 5 / camRef.current.k;
       let best: GNode | null = null;
       let bestD = Infinity;
-      for (const n of nodes) {
+      for (const n of liveRef.current?.nodes ?? []) {
         const dx = (n.x ?? 0) - x;
         const dy = (n.y ?? 0) - y;
         const d = Math.hypot(dx, dy) - n.r - slack;
@@ -385,6 +422,9 @@ export default function Brain(props: BrainProps) {
       last = now;
       const t = now / 1000;
       const { visuals, selectedId, graph, cardRef } = propsRef.current;
+      const live = liveRef.current!;
+      const nodes = live.nodes;
+      const links = live.links;
       const hoverId = hoverRef.current;
       const { w, h, dpr, left, top } = sizeRef.current;
       const cam = camRef.current;
@@ -580,7 +620,7 @@ export default function Brain(props: BrainProps) {
       /* locating pulses */
       pulsesRef.current = pulsesRef.current.filter((p) => now - p.t0 < 1500);
       for (const p of pulsesRef.current) {
-        const n = graph.byId.get(p.id);
+        const n = live.byId.get(p.id);
         if (!n) continue;
         const age = (now - p.t0) / 1500;
         for (let i = 0; i < 3; i++) {
@@ -625,14 +665,14 @@ export default function Brain(props: BrainProps) {
         }
         alpha *= Math.min(1, age);
         const text = n.label;
-        ctx.fillStyle = rgba("#070910", alpha * 0.85);
+        ctx.fillStyle = rgba("#000000", alpha * 0.85);
         ctx.fillText(text, sx + 0.8, sy + 3.8);
         ctx.fillStyle = rgba(n.kind === "topic" ? "#eef1f8" : v.status === "due" ? "#ffd58a" : "#c6ccdb", alpha);
         ctx.fillText(text, sx, sy + 3);
       }
 
       /* tether from selected node to the card */
-      const selNode = selectedId ? graph.byId.get(selectedId) : null;
+      const selNode = selectedId ? live.byId.get(selectedId) : null;
       const card = selNode ? cardRef.current?.getBoundingClientRect() : null;
       if (selNode && card && card.width > 0) {
         const v = visuals.get(selNode.id)!;

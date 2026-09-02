@@ -1,6 +1,8 @@
+"use client";
+
 import { DIFFICULTY_COLOR, STATUS_COLOR } from "@/lib/graph";
 
-export default function Legend() {
+export default function Legend({ onLock }: { onLock: () => void }) {
   return (
     <div className="pointer-events-none absolute bottom-3 right-4 z-10 hidden items-center gap-4 text-[10.5px] uppercase tracking-[0.12em] text-mist/45 md:flex">
       <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR.done }} />done</span>
@@ -12,7 +14,14 @@ export default function Legend() {
       <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full border-[1.5px]" style={{ borderColor: DIFFICULTY_COLOR.medium }} />med</span>
       <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: DIFFICULTY_COLOR.hard }} />hard</span>
       <span className="mx-1 h-3 w-px bg-white/10" />
-      <span className="normal-case tracking-normal text-mist/35">drag · scroll to zoom · / to search</span>
+      <span className="normal-case tracking-normal text-mist/35">drag · scroll to zoom · / to search · n to log</span>
+      <button onClick={onLock} className="pointer-events-auto flex items-center gap-1 normal-case tracking-normal text-mist/35 transition hover:text-white" title="Lock this brain">
+        <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none">
+          <rect x="3" y="7" width="10" height="7" rx="2" stroke="currentColor" strokeWidth="1.3" />
+          <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        lock
+      </button>
     </div>
   );
 }

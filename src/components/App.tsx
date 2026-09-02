@@ -7,19 +7,15 @@ import NodeCard from "./NodeCard";
 import RedoTray from "./RedoTray";
 import Legend from "./Legend";
 import Toast from "./Toast";
-import { CURRENT_TOPIC, problems, topics, type TopicId } from "@/lib/data";
-import {
-  STATUS_COLOR,
-  buildGraph,
-  problemVisualStatus,
-  problemsByTopic,
-  topicById,
-  topicVisualStatus,
-} from "@/lib/graph";
+import LogSolve from "./LogSolve";
+import { CURRENT_TOPIC, problems as seedProblems, topics, type Problem, type TopicId } from "@/lib/data";
+import { STATUS_COLOR, buildGraph, buildSearchDocs, groupByTopic, problemVisualStatus, topicById, topicVisualStatus } from "@/lib/graph";
 import {
   deriveProblem,
   formatDate,
+  loadCustomProblems,
   loadRedoLog,
+  saveCustomProblems,
   saveRedoLog,
   todayISO,
   type DerivedProblem,
@@ -35,31 +31,38 @@ export interface ToastState {
 }
 
 export default function App() {
-  const graph = useMemo(buildGraph, []);
   const [mounted, setMounted] = useState(false);
   const [today, setToday] = useState("2000-01-01");
   const [log, setLog] = useState<RedoLog>({});
+  const [custom, setCustom] = useState<Problem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [topicFilter, setTopicFilter] = useState<TopicId | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [logging, setLogging] = useState<{ title: string } | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const nonce = useRef(0);
 
   useEffect(() => {
     setToday(todayISO());
     setLog(loadRedoLog());
+    setCustom(loadCustomProblems());
     setMounted(true);
   }, []);
 
   /* ── Derived data ────────────────────────────────────────────────── */
+  const allProblems = useMemo(() => [...seedProblems, ...custom], [custom]);
+  const graph = useMemo(() => buildGraph(allProblems), [allProblems]);
+  const byTopic = useMemo(() => groupByTopic(allProblems), [allProblems]);
+  const docs = useMemo(() => buildSearchDocs(allProblems), [allProblems]);
+
   const derived = useMemo(() => {
     const m = new Map<string, DerivedProblem>();
-    for (const p of problems) m.set(p.id, deriveProblem(p, log[p.id] ?? [], today));
+    for (const p of allProblems) m.set(p.id, deriveProblem(p, log[p.id] ?? [], today));
     return m;
-  }, [log, today]);
+  }, [allProblems, log, today]);
 
   const due = useMemo(
     () => [...derived.values()].filter((p) => p.state === "due").sort((a, b) => b.overdueDays - a.overdueDays),
@@ -96,13 +99,14 @@ export default function App() {
       if (statusFilter === "all") return true;
       if (node.kind === "topic") {
         const t = topicById.get(node.topicId)!;
+        const ids = byTopic.get(t.id) ?? [];
         switch (statusFilter) {
           case "done":
             return t.status === "done";
           case "due":
-            return problemsByTopic.get(t.id)!.some((pid) => derived.get(pid)!.state === "due");
+            return ids.some((pid) => derived.get(pid)!.state === "due");
           case "play":
-            return t.status === "next" || t.status === "in-progress" || problemsByTopic.get(t.id)!.some((pid) => derived.get(pid)!.state === "pending");
+            return t.status === "next" || t.status === "in-progress" || ids.some((pid) => derived.get(pid)!.state === "pending");
           case "locked":
             return t.status === "locked";
         }
@@ -119,13 +123,13 @@ export default function App() {
           return false;
       }
     },
-    [graph, derived, statusFilter, topicFilter],
+    [graph, byTopic, derived, statusFilter, topicFilter],
   );
 
   const visuals = useMemo(() => {
     const m = new Map<string, NodeVisual>();
     for (const t of topics) {
-      const ids = problemsByTopic.get(t.id)!;
+      const ids = byTopic.get(t.id) ?? [];
       let mastery: number | undefined;
       if (ids.length) {
         const solved = ids.filter((id) => derived.get(id)!.state !== "pending");
@@ -149,7 +153,7 @@ export default function App() {
       });
     }
     return m;
-  }, [derived, passes]);
+  }, [byTopic, derived, passes]);
 
   /* ── Actions ─────────────────────────────────────────────────────── */
   const select = useCallback(
@@ -186,24 +190,81 @@ export default function App() {
     [log, today, derived],
   );
 
+  const addProblem = useCallback(
+    (p: Problem) => {
+      const next = [...custom, p];
+      setCustom(next);
+      saveCustomProblems(next);
+      setLogging(null);
+      setSelectedId(p.id);
+      setFocus({ id: p.id, nonce: ++nonce.current, color: STATUS_COLOR.done, zoom: 1.5 });
+      const d = deriveProblem(p, [], today);
+      setToast({ key: Date.now(), text: `${p.lc ? `LC ${p.lc}` : p.title} logged · first redo ${formatDate(d.nextDue)}` });
+    },
+    [custom, today],
+  );
+
+  const deleteProblem = useCallback(
+    (id: string) => {
+      const removed = custom.find((p) => p.id === id);
+      if (!removed) return;
+      const next = custom.filter((p) => p.id !== id);
+      const nextLog = { ...log };
+      const removedLog = nextLog[id];
+      delete nextLog[id];
+      setCustom(next);
+      saveCustomProblems(next);
+      setLog(nextLog);
+      saveRedoLog(nextLog);
+      setSelectedId(null);
+      setToast({
+        key: Date.now(),
+        text: `${removed.lc ? `LC ${removed.lc}` : removed.title} deleted`,
+        undo: () => {
+          const restored = [...next, removed];
+          setCustom(restored);
+          saveCustomProblems(restored);
+          if (removedLog) {
+            const l = { ...nextLog, [id]: removedLog };
+            setLog(l);
+            saveRedoLog(l);
+          }
+          setToast(null);
+        },
+      });
+    },
+    [custom, log],
+  );
+
   const isolate = useCallback((id: TopicId | null) => {
     setTopicFilter((cur) => (cur === id ? null : id));
+  }, []);
+
+  const lock = useCallback(async () => {
+    try {
+      await fetch("/api/unlock", { method: "DELETE" });
+    } finally {
+      window.location.assign("/unlock");
+    }
   }, []);
 
   /* ── Keyboard ────────────────────────────────────────────────────── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         document.getElementById("brain-search")?.focus();
         return;
       }
-      if (typing) return;
+      if (typing || logging) return;
       if (e.key === "/") {
         e.preventDefault();
         document.getElementById("brain-search")?.focus();
+      } else if (e.key === "n") {
+        e.preventDefault();
+        setLogging({ title: "" });
       } else if (e.key === "Escape") {
         if (selectedId) setSelectedId(null);
         else {
@@ -214,7 +275,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId]);
+  }, [selectedId, logging]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -223,6 +284,7 @@ export default function App() {
 
   const selectedNode = selectedId ? graph.byId.get(selectedId) ?? null : null;
   const hoverNode = hoverId ? graph.byId.get(hoverId) ?? null : null;
+  const suggestedTopic: TopicId | null = selectedNode ? selectedNode.topicId : topicFilter;
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-ink text-mist">
@@ -246,12 +308,14 @@ export default function App() {
 
       <TopBar
         stats={stats}
+        docs={docs}
         statusFilter={statusFilter}
         onStatusFilter={setStatusFilter}
         topicFilter={topicFilter}
         onTopicFilter={setTopicFilter}
         onPick={(id) => select(id, { zoom: 1.5 })}
         onCurrentTopic={() => select(CURRENT_TOPIC)}
+        onLog={(title) => setLogging({ title: title ?? "" })}
         hoverLabel={
           hoverNode && hoverNode.id !== selectedId
             ? hoverNode.kind === "topic"
@@ -267,11 +331,13 @@ export default function App() {
           cardRef={cardRef}
           node={selectedNode}
           derived={derived}
+          byTopic={byTopic}
           today={today}
           topicFilter={topicFilter}
           onSelect={(id) => select(id)}
           onIsolate={isolate}
           onMarkRedone={markRedone}
+          onDelete={deleteProblem}
           onClose={() => setSelectedId(null)}
         />
       )}
@@ -286,9 +352,11 @@ export default function App() {
         />
       )}
 
-      <Legend />
+      <Legend onLock={lock} />
 
       {toast && <Toast toast={toast} onDone={() => setToast(null)} />}
+
+      {logging && <LogSolve initialTitle={logging.title} suggestedTopic={suggestedTopic} onClose={() => setLogging(null)} onSubmit={addProblem} />}
     </div>
   );
 }

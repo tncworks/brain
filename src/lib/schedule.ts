@@ -1,4 +1,5 @@
 import { REDO_LADDER, type Problem } from "./data";
+import { topicById } from "./graph";
 
 /* ── Date helpers (all in local time, ISO YYYY-MM-DD) ─────────────────── */
 
@@ -106,4 +107,60 @@ export function saveRedoLog(log: RedoLog) {
   } catch {
     /* private mode / quota — the session still works in memory */
   }
+}
+
+/* ── localStorage-backed problems logged in the app ────────────────────── */
+
+export const PROBLEMS_KEY = "dsa-brain:problems:v1";
+
+export function loadCustomProblems(): Problem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROBLEMS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((p): p is Problem => p && typeof p.id === "string" && typeof p.title === "string" && Array.isArray(p.topics) && p.topics.length > 0)
+      .map((p) => ({ ...p, custom: true, topics: p.topics.filter((t) => topicById.has(t)) }))
+      .filter((p) => p.topics.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomProblems(list: Problem[]) {
+  try {
+    window.localStorage.setItem(PROBLEMS_KEY, JSON.stringify(list));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** Render a problem as a line you can paste straight into `problems` in data.ts. */
+export function problemToDataLine(p: Problem, redos: string[] = []): string {
+  const q = (v: string | null | undefined) => (v == null ? "null" : JSON.stringify(v));
+  const lastRedo = redos.length ? redos[redos.length - 1] : p.redoDate;
+  const status = p.redoStatus === "pending" || p.redoStatus === "untracked" ? p.redoStatus : lastRedo ? "redone" : "tracked";
+  const parts = [
+    `id: ${q(p.id)}`,
+    `lc: ${p.lc ?? "null"}`,
+    `title: ${q(p.title)}`,
+    ...(p.slug ? [`slug: ${q(p.slug)}`] : []),
+    `difficulty: ${q(p.difficulty)}`,
+    `topics: [${p.topics.map((t) => q(t)).join(", ")}]`,
+    `solvedDate: ${q(p.solvedDate)}`,
+    `redoDate: ${q(lastRedo)}`,
+    `redoStatus: ${q(status)}`,
+    ...(p.note ? [`note: ${q(p.note)}`] : []),
+  ];
+  return `  { ${parts.join(", ")} },`;
 }

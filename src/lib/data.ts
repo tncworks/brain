@@ -64,6 +64,8 @@ export interface Problem {
   redoDate: string | null;
   redoStatus: RedoStatus;
   note?: string;
+  /** True for problems logged inside the app (stored in localStorage, not in this file). */
+  custom?: boolean;
 }
 
 /**

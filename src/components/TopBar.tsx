@@ -16,12 +16,14 @@ interface Stats {
 
 interface Props {
   stats: Stats;
+  docs: SearchDoc[];
   statusFilter: StatusFilter;
   onStatusFilter: (f: StatusFilter) => void;
   topicFilter: TopicId | null;
   onTopicFilter: (t: TopicId | null) => void;
   onPick: (id: string) => void;
   onCurrentTopic: () => void;
+  onLog: (title?: string) => void;
   hoverLabel: string | null;
 }
 
@@ -33,7 +35,7 @@ const CHIPS: { id: StatusFilter; label: string; dot?: string }[] = [
   { id: "locked", label: "Locked", dot: "bg-locked" },
 ];
 
-export default function TopBar({ stats, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, hoverLabel }: Props) {
+export default function TopBar({ stats, docs, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, onLog, hoverLabel }: Props) {
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -48,7 +50,18 @@ export default function TopBar({ stats, statusFilter, onStatusFilter, topicFilte
           </span>
         </div>
 
-        <Search onPick={onPick} />
+        <Search docs={docs} onPick={onPick} onLog={onLog} />
+
+        <button
+          onClick={() => onLog()}
+          className="pointer-events-auto ml-auto flex h-11 shrink-0 items-center gap-2 rounded-full bg-white pl-3.5 pr-4 sm:ml-0 text-[13px] font-medium text-ink shadow-[0_10px_30px_-12px_rgba(255,255,255,.5)] transition hover:bg-done active:scale-[0.98]"
+          title="Log a new solve (n)"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+            <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          Log solve
+        </button>
 
         {/* Vitals */}
         <div className="pointer-events-auto glass hidden h-11 items-center divide-x divide-white/8 rounded-full px-1 md:flex">
@@ -134,12 +147,12 @@ function Vital({ label, value, sub }: { label: string; value: number; sub?: stri
 
 /* ── Fuzzy search ──────────────────────────────────────────────────────── */
 
-function Search({ onPick }: { onPick: (id: string) => void }) {
+function Search({ docs, onPick, onLog }: { docs: SearchDoc[]; onPick: (id: string) => void; onLog: (title?: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const results = useMemo(() => search(q), [q]);
+  const results = useMemo(() => search(q, docs), [q, docs]);
 
   useEffect(() => setCursor(0), [q]);
 
@@ -149,9 +162,15 @@ function Search({ onPick }: { onPick: (id: string) => void }) {
     setOpen(false);
     inputRef.current?.blur();
   };
+  const logIt = () => {
+    onLog(q.trim());
+    setQ("");
+    setOpen(false);
+    inputRef.current?.blur();
+  };
 
   return (
-    <div className="pointer-events-auto relative w-full sm:w-[300px]">
+    <div className="pointer-events-auto relative order-last w-full sm:order-none sm:w-[300px]">
       <div className={`glass flex h-11 items-center gap-2 rounded-full pl-4 pr-3 transition ${open ? "ring-1 ring-white/20" : ""}`}>
         <svg className="h-4 w-4 shrink-0 text-mist/50" viewBox="0 0 16 16" fill="none">
           <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
@@ -174,8 +193,9 @@ function Search({ onPick }: { onPick: (id: string) => void }) {
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setCursor((c) => Math.max(0, c - 1));
-            } else if (e.key === "Enter" && results[cursor]) {
-              pick(results[cursor]);
+            } else if (e.key === "Enter") {
+              if (results[cursor]) pick(results[cursor]);
+              else if (q.trim()) logIt();
             } else if (e.key === "Escape") {
               setQ("");
               inputRef.current?.blur();
@@ -190,7 +210,6 @@ function Search({ onPick }: { onPick: (id: string) => void }) {
       </div>
       {open && q.trim() && (
         <ul className="glass absolute left-0 right-0 top-[52px] overflow-hidden rounded-2xl p-1.5 animate-rise">
-          {results.length === 0 && <li className="px-3 py-2 text-[12.5px] text-mist/50">No node matches “{q}”</li>}
           {results.map((d, i) => (
             <li key={d.id}>
               <button
@@ -208,6 +227,19 @@ function Search({ onPick }: { onPick: (id: string) => void }) {
               </button>
             </li>
           ))}
+          <li className={results.length ? "mt-1 border-t border-white/6 pt-1" : ""}>
+            <button onMouseDown={(e) => e.preventDefault()} onClick={logIt} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-white/10 ${results.length === 0 ? "bg-white/5" : ""}`}>
+              <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white text-ink">
+                <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none">
+                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-white">
+                Log “{q.trim()}” as a new solve
+              </span>
+              {results.length === 0 && <span className="text-[10px] text-mist/40">↵</span>}
+            </button>
+          </li>
         </ul>
       )}
     </div>
