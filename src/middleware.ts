@@ -3,7 +3,8 @@ import { AUTH_COOKIE, isAuthed } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/api/unlock")) return NextResponse.next();
+  // /api/nag carries its own bearer-or-cookie check; /cats are the meme images mails link to.
+  if (pathname.startsWith("/api/unlock") || pathname.startsWith("/api/nag") || pathname.startsWith("/cats/")) return NextResponse.next();
 
   const authed = await isAuthed(req.cookies.get(AUTH_COOKIE)?.value);
 

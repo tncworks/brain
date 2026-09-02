@@ -39,6 +39,19 @@ The state route sits behind the same password cookie as the rest of the site. `n
 
 To bake a logged problem into the repo, open its card and click **Copy for data.ts**.
 
+## Redo nag mails
+
+While anything is due, `/api/nag` mails one random due problem with a cat and a roast. A GitHub Actions cron (`.github/workflows/nag.yml`) pokes it every 3 hours; the endpoint refuses to send inside quiet hours (`NAG_QUIET_HOURS`, default 0–7 IST) or within 2 hours of the last mail, so retries never double-send.
+
+Setup:
+
+1. Gmail app password for the sending account: Google Account → Security → 2-Step Verification → App passwords.
+2. Vercel → Settings → Environment Variables: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `NAG_TO`, `CRON_SECRET` (any long random string), optional `NAG_TZ`, `NAG_QUIET_HOURS`. Redeploy.
+3. GitHub → repo → Settings → Secrets and variables → Actions → new secret `CRON_SECRET` with the same value.
+4. Actions tab → **redo nag** → Run workflow to test.
+
+Preview the mail in a browser while logged in: `/api/nag?preview=1`. `/api/nag?dry=1` builds and returns the message without sending.
+
 ## Adding data
 
 Everything lives in `src/lib/data.ts`:

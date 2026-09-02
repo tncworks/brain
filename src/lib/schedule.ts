@@ -15,6 +15,23 @@ export function toISO(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Today's date in a named time zone — serverless runs in UTC, the user does not. */
+export function todayISOInTZ(tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return todayISO();
+  }
+}
+
+export function hourInTZ(tz: string): number {
+  try {
+    return Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date()));
+  } catch {
+    return new Date().getHours();
+  }
+}
+
 export function parseISO(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
