@@ -1,0 +1,215 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { StatusFilter } from "./App";
+import { topics, type Topic, type TopicId } from "@/lib/data";
+import { search, type SearchDoc } from "@/lib/graph";
+
+interface Stats {
+  solved: number;
+  due: number;
+  retained: number;
+  topicsDone: number;
+  topicsTotal: number;
+  currentTopic: Topic;
+}
+
+interface Props {
+  stats: Stats;
+  statusFilter: StatusFilter;
+  onStatusFilter: (f: StatusFilter) => void;
+  topicFilter: TopicId | null;
+  onTopicFilter: (t: TopicId | null) => void;
+  onPick: (id: string) => void;
+  onCurrentTopic: () => void;
+  hoverLabel: string | null;
+}
+
+const CHIPS: { id: StatusFilter; label: string; dot?: string }[] = [
+  { id: "all", label: "All" },
+  { id: "done", label: "Done", dot: "bg-done" },
+  { id: "due", label: "Redo due", dot: "bg-due" },
+  { id: "play", label: "In play", dot: "bg-progress" },
+  { id: "locked", label: "Locked", dot: "bg-locked" },
+];
+
+export default function TopBar({ stats, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, hoverLabel }: Props) {
+  return (
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 p-3 sm:p-4">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {/* Wordmark */}
+        <div className="pointer-events-auto glass flex h-11 items-center gap-3 rounded-full pl-4 pr-4">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-done opacity-40" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-done" />
+          </span>
+          <span className="font-serif text-[19px] leading-none tracking-tight text-white">
+            DSA <span className="italic text-mist/80">Brain</span>
+          </span>
+        </div>
+
+        <Search onPick={onPick} />
+
+        {/* Vitals */}
+        <div className="pointer-events-auto glass hidden h-11 items-center divide-x divide-white/8 rounded-full px-1 md:flex">
+          <Vital label="solved" value={stats.solved} />
+          <Vital label="retained" value={stats.retained} sub={`/ ${stats.solved}`} />
+          <button
+            onClick={() => onStatusFilter(statusFilter === "due" ? "all" : "due")}
+            className={`group flex h-full items-center gap-2 px-4 text-left transition ${stats.due ? "text-due" : "text-mist/70"}`}
+            title="Filter to redos due"
+          >
+            <span className={`font-serif text-[22px] leading-none ${stats.due ? "animate-[nagtext_1.8s_ease-in-out_infinite]" : ""}`}>{stats.due}</span>
+            <span className="text-[10.5px] uppercase tracking-[0.14em] opacity-70">due today</span>
+          </button>
+          <button onClick={onCurrentTopic} className="flex h-full items-center gap-2 px-4 text-left transition hover:text-white" title="Jump to current topic">
+            <span className="text-[10.5px] uppercase tracking-[0.14em] text-mist/60">now</span>
+            <span className="font-serif text-[15px] italic text-progress">{stats.currentTopic.name}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+        <div className="pointer-events-auto glass flex h-9 shrink-0 items-center gap-0.5 rounded-full p-1">
+          {CHIPS.map((c) => {
+            const active = statusFilter === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => onStatusFilter(c.id)}
+                className={`flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] transition ${
+                  active ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]" : "text-mist/65 hover:text-white"
+                }`}
+              >
+                {c.dot && <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />}
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="pointer-events-auto glass relative flex h-9 shrink-0 items-center rounded-full">
+          <select
+            value={topicFilter ?? ""}
+            onChange={(e) => onTopicFilter((e.target.value || null) as TopicId | null)}
+            className={`h-full cursor-pointer appearance-none rounded-full bg-transparent pl-3.5 pr-8 text-[12px] outline-none ${topicFilter ? "text-white" : "text-mist/65"}`}
+          >
+            <option value="" className="bg-ink-2">All topics</option>
+            {topics.map((t) => (
+              <option key={t.id} value={t.id} className="bg-ink-2">
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <svg className="pointer-events-none absolute right-3 h-3 w-3 text-mist/50" viewBox="0 0 12 12" fill="none">
+            <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {topicFilter && (
+            <button onClick={() => onTopicFilter(null)} className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-white text-[9px] text-ink" title="Clear topic filter">
+              ✕
+            </button>
+          )}
+        </div>
+
+        {hoverLabel && (
+          <div className="pointer-events-none hidden h-9 items-center rounded-full px-1 font-serif text-[14px] italic text-mist/60 animate-fade sm:flex">
+            {hoverLabel}
+          </div>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function Vital({ label, value, sub }: { label: string; value: number; sub?: string }) {
+  return (
+    <div className="flex h-full items-center gap-2 px-4">
+      <span className="font-serif text-[22px] leading-none text-white">{value}</span>
+      {sub && <span className="-ml-1 text-[11px] text-mist/40">{sub}</span>}
+      <span className="text-[10.5px] uppercase tracking-[0.14em] text-mist/55">{label}</span>
+    </div>
+  );
+}
+
+/* ── Fuzzy search ──────────────────────────────────────────────────────── */
+
+function Search({ onPick }: { onPick: (id: string) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const results = useMemo(() => search(q), [q]);
+
+  useEffect(() => setCursor(0), [q]);
+
+  const pick = (d: SearchDoc) => {
+    onPick(d.id);
+    setQ("");
+    setOpen(false);
+    inputRef.current?.blur();
+  };
+
+  return (
+    <div className="pointer-events-auto relative w-full sm:w-[300px]">
+      <div className={`glass flex h-11 items-center gap-2 rounded-full pl-4 pr-3 transition ${open ? "ring-1 ring-white/20" : ""}`}>
+        <svg className="h-4 w-4 shrink-0 text-mist/50" viewBox="0 0 16 16" fill="none">
+          <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+        <input
+          id="brain-search"
+          ref={inputRef}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setCursor((c) => Math.min(results.length - 1, c + 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setCursor((c) => Math.max(0, c - 1));
+            } else if (e.key === "Enter" && results[cursor]) {
+              pick(results[cursor]);
+            } else if (e.key === "Escape") {
+              setQ("");
+              inputRef.current?.blur();
+            }
+          }}
+          placeholder="Find a node…"
+          className="w-full bg-transparent text-[13.5px] text-white placeholder:text-mist/40 outline-none"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <kbd className="hidden shrink-0 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 font-sans text-[10px] text-mist/50 sm:block">⌘K</kbd>
+      </div>
+      {open && q.trim() && (
+        <ul className="glass absolute left-0 right-0 top-[52px] overflow-hidden rounded-2xl p-1.5 animate-rise">
+          {results.length === 0 && <li className="px-3 py-2 text-[12.5px] text-mist/50">No node matches “{q}”</li>}
+          {results.map((d, i) => (
+            <li key={d.id}>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(d)}
+                onMouseEnter={() => setCursor(i)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${i === cursor ? "bg-white/10" : ""}`}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${d.kind === "topic" ? "bg-white" : "bg-mist/50"}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] text-white">{d.primary}</span>
+                  <span className="block truncate text-[11px] text-mist/50">{d.secondary}</span>
+                </span>
+                {i === cursor && <span className="text-[10px] text-mist/40">↵</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
