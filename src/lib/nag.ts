@@ -71,8 +71,8 @@ export function buildNag(due: DerivedProblem[], siteUrl: string): NagMail {
   const html = `<!doctype html><html><body style="margin:0;background:#000;color:#c6ccdb;font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:28px 20px">
   <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7fd9a6">DSA Brain · redo alert</div>
-  <p style="font-size:15px;line-height:1.5;margin:14px 0 4px;color:#fff">${esc(opener)}</p>
-  <p style="font-size:15px;line-height:1.5;margin:0 0 18px">${esc(roast)}</p>
+  <p style="font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.2;margin:14px 0 8px;color:#fff">${esc(opener)}</p>
+  <p style="font-size:20px;line-height:1.4;font-weight:600;margin:0 0 20px;color:#fff">${esc(roast)}</p>
 
   <a href="${problemUrl}" style="display:block;text-decoration:none;background:#0b0b0d;border:1px solid rgba(245,181,63,.35);border-radius:16px;padding:16px 18px;margin:0 0 18px">
     <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#f5b53f">${esc(daysText(pick))}</div>
@@ -81,7 +81,7 @@ export function buildNag(due: DerivedProblem[], siteUrl: string): NagMail {
   </a>
 
   <img src="${siteUrl}${cat}" alt="cat" width="320" style="display:block;width:100%;max-width:320px;border-radius:14px;margin:0 auto">
-  <p style="text-align:center;font-size:12px;color:#8b95b0;margin:8px 0 18px">${esc(caption)}</p>
+  <p style="text-align:center;font-size:14px;color:#c6ccdb;margin:8px 0 20px">${esc(caption)}</p>
 
   ${
     others.length
@@ -92,7 +92,7 @@ export function buildNag(due: DerivedProblem[], siteUrl: string): NagMail {
       : ""
   }
 
-  <p style="font-size:15px;line-height:1.5;color:#fff;margin:0 0 18px">${esc(closer)}</p>
+  <p style="font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:#fff;margin:0 0 18px">${esc(closer)}</p>
   <a href="${siteUrl}" style="display:inline-block;background:#f5b53f;color:#000;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:999px">open the brain →</a>
   <p style="font-size:11px;color:#5a6070;margin-top:26px;line-height:1.6">sent every 3 hours while redos exist. you know how to make it stop.</p>
 </div></body></html>`;
