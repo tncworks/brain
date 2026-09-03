@@ -5,34 +5,69 @@
 import { topicById } from "./graph";
 import type { DerivedProblem } from "./schedule";
 
-export const CATS = ["/cats/cat-1.jpg", "/cats/cat-2.jpg", "/cats/cat-3.jpg"];
+export const CATS = ["/cats/cat-1.jpg", "/cats/cat-2.jpg", "/cats/cat-3.jpg", "/cats/cat-4.jpg", "/cats/cat-5.jpg", "/cats/cat-6.jpg"];
 
 const pickOne = <T,>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)];
 
 const SUBJECTS = [
-  "{n} redos rotting rn and you're on your phone 💀",
-  "not you ghosting {short} again",
+  "{n} redos rotting and you're on your phone 💀",
+  "not you ghosting {short} again, unemployed unc",
   "{short} said 'he forgot me' 😭",
-  "the redo queue is {n} deep. it's giving allergic to effort",
-  "your brain is buffering. {n} due. L + ratio",
+  "the redo queue is {n} deep. it's giving jobless",
+  "your brain is buffering. {n} due. L + ratio + unemployed",
   "daily reminder {short} is beating you 1-0",
   "bestie the synapses are LEAVING ({n} due)",
+  "recruiters can smell the {n} redos on you",
+  "{short} is still due. HR said 'we'll keep your resume on file' 💀",
+  "unc. the queue. now.",
 ];
 
-const OPENERS = ["yo. real talk.", "hey loser 🫵", "it's the redo cat again.", "checking in on your unemployment arc.", "sup. bad news."];
+const OPENERS = [
+  "yo. real talk.",
+  "hey loser 🫵",
+  "it's the redo cat again.",
+  "checking in on your unemployment arc.",
+  "sup, unemployed unc.",
+  "breaking news: you fell off.",
+  "dear future 'open to work' badge,",
+  "pov: your interviewer is reading this too.",
+];
 
 const ROASTS = [
-  "{title} has been sitting there {days}. it's not gonna solve itself bestie.",
-  "you solved {title} once and thought that was it? that's not mastery that's a situationship.",
-  "{title}: {days}. the cat has done more today than you.",
-  "your motivation window slid shut apparently. {title}. now.",
-  "your synapses for {title} are cooked. skill issue. fix it.",
-  "{title} is {days} and you're 'gonna do it later'. later is a myth.",
+  "{title} has been sitting there {days}. it's not gonna solve itself and neither is your career.",
+  "you solved {title} once and thought that was it? that's not mastery that's a situationship. you'll stay unemployed like this.",
+  "{title}: {days}. the cat has done more today than you. the cat also has a job.",
+  "your motivation window slid shut apparently. {title}. now. before the recruiter's does too.",
+  "your synapses for {title} are cooked. skill issue. fix it or enjoy the unemployment speedrun.",
+  "{title} is {days} and you're 'gonna do it later'. later is where jobless people live.",
+  "{n} redos due. that's {n} reasons you'd fold in a phone screen. {title} first.",
+  "imagine bombing {title} in an interview after solving it once. couldn't be you. oh wait. it would.",
+  "{title}, {days}. even the FAANG rejection bot is disappointed in you.",
+  "the gap between you and employed is exactly {title}. close it, unc.",
 ];
 
-const CLOSERS = ["no cap, 10 minutes and it's done.", "touch grass AFTER the redo.", "the cat is judging you. rightfully.", "be so fr rn.", "lock in. or don't. the cat will know."];
+const CLOSERS = [
+  "no cap, 10 minutes and it's done.",
+  "touch grass AFTER the redo.",
+  "the cat is judging you. rightfully.",
+  "be so fr rn.",
+  "lock in. or don't. the cat will know.",
+  "do it or stay unemployed. your call, unc.",
+  "your future self is begging. your current self is scrolling.",
+  "one redo a day keeps the 'unfortunately' email away.",
+  "you're not cooked yet. you're just marinating. move.",
+];
 
-const CAPTIONS = ["the cat when you open leetcode: 👍", "pov: the cat sees your redo queue", "certified 'do the redo' cat", "this cat has more retention than you"];
+const CAPTIONS = [
+  "the cat when you open leetcode: 👍",
+  "pov: the cat sees your redo queue",
+  "certified 'do the redo' cat",
+  "this cat has more retention than you",
+  "the cat when you say 'i'll do it tomorrow'",
+  "cat has a 9-5. what's your excuse",
+  "the hiring manager (cat) reviewing your queue",
+  "he's not mad. just disappointed. ok he's mad.",
+];
 
 const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 
