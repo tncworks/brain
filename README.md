@@ -52,6 +52,12 @@ Setup:
 
 Preview the mail in a browser while logged in: `/api/nag?preview=1`. `/api/nag?dry=1` builds and returns the message without sending.
 
+## Two brains, one canvas
+
+The DSA brain (green, disciplined) and the Developer Journey brain (warm, playful) each run their own force simulation with their own centre of gravity. Drag a brain by its territory glow: when the two get close their membranes push back and both bodies recoil, so they never merge. Focus one with the **Both / DSA / Dev** toggle or keys `1` `2` `3`; the other dims.
+
+Dev brain data lives in `src/lib/data-dev.ts`: the identity node, hubs (Open Source, Projects, Community, Next up), items under each hub, a skills constellation that orbits the core, and dashed learning-next nodes. Append a `DevNodeDef` and it appears; list `skills` on an item to get constellation lines on hover.
+
 ## Adding data
 
 Everything lives in `src/lib/data.ts`:

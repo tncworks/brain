@@ -4,6 +4,8 @@ import { useState } from "react";
 import { prerequisites, REDO_LADDER, type TopicId } from "@/lib/data";
 import { DIFFICULTY_COLOR, STATUS_COLOR, STATUS_LABEL, problemVisualStatus, topicById, topicVisualStatus, type GNode } from "@/lib/graph";
 import { formatDate, problemToDataLine, type DerivedProblem } from "@/lib/schedule";
+import { DEV_GROUP_COLOR, DEV_GROUP_LABEL, devNodes } from "@/lib/data-dev";
+import { devById, devId } from "@/lib/graph-dev";
 
 interface Props {
   cardRef: React.RefObject<HTMLDivElement | null>;
@@ -32,7 +34,7 @@ export default function NodeCard(props: Props) {
           <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
-      {node.kind === "topic" ? <TopicBody {...props} /> : <ProblemBody {...props} />}
+      {node.brain === "dev" ? <DevBody {...props} /> : node.kind === "topic" ? <TopicBody {...props} /> : <ProblemBody {...props} />}
     </aside>
   );
 }
@@ -207,7 +209,7 @@ function ProblemBody({ node, derived, onSelect, onMarkRedone, onDelete }: Props)
 /* ── Topic ─────────────────────────────────────────────────────────────── */
 
 function TopicBody({ node, derived, byTopic, topicFilter, onSelect, onIsolate }: Props) {
-  const topic = topicById.get(node.topicId)!;
+  const topic = topicById.get(node.topicId!)!;
   const status = topicVisualStatus(topic);
   const color = STATUS_COLOR[status];
   const ids = byTopic.get(topic.id) ?? [];
@@ -319,6 +321,128 @@ function Chips({ list, onSelect, empty }: { list: { id: TopicId; short: string; 
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ── Dev journey ───────────────────────────────────────────────────────── */
+
+const STATUS_TEXT = { live: "live", shipped: "shipped", wip: "in progress" } as const;
+const STATUS_COLOR_DEV = { live: "#7fd9a6", shipped: "#c6ccdb", wip: "#f5b53f" } as const;
+
+function DevBody({ node, onSelect }: Props) {
+  const d = devById.get(node.id);
+  if (!d) return null;
+  const color = DEV_GROUP_COLOR[d.group];
+  const children = devNodes.filter((x) => x.parent === d.id);
+  const usedIn = d.kind === "skill" ? devNodes.filter((x) => x.skills?.includes(d.id)) : [];
+  const skills = (d.skills ?? []).map((id) => devNodes.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const parent = d.parent ? devNodes.find((x) => x.id === d.parent) : null;
+  const counts = {
+    projects: devNodes.filter((x) => x.group === "projects" && x.kind === "item").length,
+    oss: devNodes.filter((x) => x.group === "oss" && x.kind === "item").length,
+    skills: devNodes.filter((x) => x.kind === "skill").length,
+    community: devNodes.filter((x) => x.group === "community" && x.kind === "item").length,
+  };
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 pr-8">
+        <Pill color={color}>{DEV_GROUP_LABEL[d.group]}</Pill>
+        {d.crown && <Pill color="#ffd166">🔥 crown jewel</Pill>}
+        {d.status && (
+          <Pill color={STATUS_COLOR_DEV[d.status]} hollow>
+            {STATUS_TEXT[d.status]}
+          </Pill>
+        )}
+      </div>
+      {parent && (
+        <button onClick={() => onSelect(devId(parent.id))} className="text-[11px] font-medium tracking-[0.12em] text-mist/45 transition hover:text-white">
+          {parent.emoji} {parent.label.toUpperCase()} ↗
+        </button>
+      )}
+      <h2 className="mt-0.5 flex items-center gap-2 font-serif text-[26px] leading-[1.1] text-white">
+        <span className="text-[28px]">{d.emoji}</span>
+        {d.label}
+      </h2>
+      {d.meta && <div className="mt-1.5 text-[12.5px] text-mist/60">{d.meta}</div>}
+      {d.blurb && <p className="mt-2.5 text-[13.5px] leading-relaxed text-mist/80">{d.blurb}</p>}
+
+      {d.kind === "identity" && (
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          {(
+            [
+              ["projects", counts.projects, "projects"],
+              ["oss", counts.oss, "open source"],
+              ["community", counts.community, "community"],
+              ["skills", counts.skills, "skills"],
+            ] as const
+          ).map(([g, n, l]) => (
+            <div key={g} className="rounded-2xl border border-white/6 bg-white/[0.03] p-2.5 text-center">
+              <div className="font-serif text-[22px] leading-none" style={{ color: DEV_GROUP_COLOR[g] }}>
+                {n}
+              </div>
+              <div className="mt-1 text-[9.5px] uppercase tracking-[0.12em] text-mist/45">{l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {skills.length > 0 && (
+        <div className="mt-4">
+          <Label>Built with</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {skills.map((sk) => (
+              <button key={sk.id} onClick={() => onSelect(devId(sk.id))} className="rounded-full border border-white/10 px-2.5 py-1 text-[11.5px] text-mist/80 transition hover:border-white/25 hover:text-white">
+                {sk.emoji} {sk.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {usedIn.length > 0 && (
+        <div className="mt-4">
+          <Label>Used in</Label>
+          <ul className="-mx-2 flex flex-col">
+            {usedIn.map((x) => (
+              <li key={x.id}>
+                <button onClick={() => onSelect(devId(x.id))} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition hover:bg-white/6">
+                  <span className="text-[15px]">{x.emoji}</span>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-mist/90">{x.label}</span>
+                  <span className="text-[10.5px] text-mist/40">{DEV_GROUP_LABEL[x.group]}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {children.length > 0 && (
+        <div className="mt-4">
+          <Label>{d.kind === "identity" ? "Branches" : "Inside"}</Label>
+          <ul className="-mx-2 flex flex-col">
+            {children.map((x) => (
+              <li key={x.id}>
+                <button onClick={() => onSelect(devId(x.id))} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition hover:bg-white/6">
+                  <span className="text-[15px]">{x.emoji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] text-mist/90">{x.label}</span>
+                    {x.meta && <span className="block truncate text-[10.5px] text-mist/45">{x.meta}</span>}
+                  </span>
+                  {x.status && <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR_DEV[x.status] }} />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.url && (
+        <a href={d.url} target="_blank" rel="noreferrer" className="mt-4 flex h-10 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-ink transition hover:brightness-110" style={{ background: color }}>
+          {d.url.includes("github.com") ? "GitHub" : "Open"} <span className="text-[11px] opacity-70">↗</span>
+        </a>
+      )}
     </div>
   );
 }

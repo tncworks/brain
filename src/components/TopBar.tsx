@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { StatusFilter } from "./App";
+import type { BrainFocus, StatusFilter } from "./App";
 import { topics, type Topic, type TopicId } from "@/lib/data";
 import { search, type SearchDoc } from "@/lib/graph";
 import type { SyncStatus } from "@/lib/store";
@@ -26,8 +26,16 @@ interface Props {
   onPick: (id: string) => void;
   onCurrentTopic: () => void;
   onLog: (title?: string) => void;
+  brainFocus: BrainFocus;
+  onBrainFocus: (b: BrainFocus) => void;
   hoverLabel: string | null;
 }
+
+const BRAINS: { id: BrainFocus; label: string; dot: string }[] = [
+  { id: "both", label: "Both", dot: "bg-white" },
+  { id: "dsa", label: "DSA", dot: "bg-done" },
+  { id: "dev", label: "Dev", dot: "bg-[#ff9f43]" },
+];
 
 const CHIPS: { id: StatusFilter; label: string; dot?: string }[] = [
   { id: "all", label: "All" },
@@ -37,7 +45,7 @@ const CHIPS: { id: StatusFilter; label: string; dot?: string }[] = [
   { id: "locked", label: "Locked", dot: "bg-locked" },
 ];
 
-export default function TopBar({ stats, sync, docs, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, onLog, hoverLabel }: Props) {
+export default function TopBar({ stats, sync, docs, statusFilter, onStatusFilter, topicFilter, onTopicFilter, onPick, onCurrentTopic, onLog, brainFocus, onBrainFocus, hoverLabel }: Props) {
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -84,6 +92,23 @@ export default function TopBar({ stats, sync, docs, statusFilter, onStatusFilter
 
       {/* Filters */}
       <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+        <div className="pointer-events-auto glass flex h-9 shrink-0 items-center gap-0.5 rounded-full p-1" title="Focus a brain (1 / 2 / 3)">
+          {BRAINS.map((b) => {
+            const active = brainFocus === b.id;
+            return (
+              <button
+                key={b.id}
+                onClick={() => onBrainFocus(b.id)}
+                className={`flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] transition ${
+                  active ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]" : "text-mist/65 hover:text-white"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} />
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="pointer-events-auto glass flex h-9 shrink-0 items-center gap-0.5 rounded-full p-1">
           {CHIPS.map((c) => {
             const active = statusFilter === c.id;

@@ -51,19 +51,29 @@ export function problemVisualStatus(p: DerivedProblem): VisualStatus {
 
 /* ── Graph structure ───────────────────────────────────────────────────── */
 
+export type BrainId = "dsa" | "dev";
+export type NodeKind = "topic" | "problem" | "identity" | "hub" | "item" | "skill" | "learning";
+
 export interface GNode extends SimulationNodeDatum {
   id: string;
-  kind: "topic" | "problem";
+  brain: BrainId;
+  kind: NodeKind;
   label: string;
+  emoji?: string;
   r: number;
   /** Per-node phase so ambient motion and pulses are desynchronised. */
   phase: number;
-  topicId: TopicId;
-  lobe: Topic["lobe"];
+  /** DSA only */
+  topicId?: TopicId;
+  lobe?: Topic["lobe"];
+  /** Dev only */
+  group?: string;
+  crown?: boolean;
+  orbit?: boolean;
 }
 
 export interface GLink extends SimulationLinkDatum<GNode> {
-  kind: "member" | "prereq";
+  kind: "member" | "prereq" | "tree" | "skill" | "learning";
   source: GNode;
   target: GNode;
 }
@@ -123,6 +133,7 @@ export function buildGraph(problems: Problem[]): Graph {
     const d = 180 + seeded(i + 100) * 120;
     const n: GNode = {
       id: t.id,
+      brain: "dsa",
       kind: "topic",
       label: t.short,
       r: topicRadius(count),
@@ -143,6 +154,7 @@ export function buildGraph(problems: Problem[]): Graph {
     const a = seeded(h) * Math.PI * 2;
     const n: GNode = {
       id: p.id,
+      brain: "dsa",
       kind: "problem",
       label: p.lc ? `LC ${p.lc}` : p.title,
       r: problemRadius(p.difficulty),
@@ -183,7 +195,7 @@ export function buildGraph(problems: Problem[]): Graph {
 
 export interface SearchDoc {
   id: string;
-  kind: "topic" | "problem";
+  kind: "topic" | "problem" | "dev";
   primary: string;
   secondary: string;
   haystack: string;

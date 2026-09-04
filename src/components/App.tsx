@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Brain, { type FocusRequest, type NodeVisual } from "./Brain";
+import Brain, { type ClusterInput, type FitRequest, type FocusRequest, type NodeVisual } from "./Brain";
 import TopBar from "./TopBar";
 import NodeCard from "./NodeCard";
 import RedoTray from "./RedoTray";
@@ -9,11 +9,14 @@ import Legend from "./Legend";
 import Toast from "./Toast";
 import LogSolve from "./LogSolve";
 import { CURRENT_TOPIC, problems as seedProblems, topics, type Problem, type TopicId } from "@/lib/data";
-import { STATUS_COLOR, buildGraph, buildSearchDocs, groupByTopic, problemVisualStatus, topicById, topicVisualStatus } from "@/lib/graph";
+import { STATUS_COLOR, buildGraph, buildSearchDocs, groupByTopic, problemVisualStatus, topicById, topicVisualStatus, type BrainId } from "@/lib/graph";
+import { buildDevGraph, devById, devSearchDocs } from "@/lib/graph-dev";
+import { DEV_GROUP_COLOR } from "@/lib/data-dev";
 import { deriveProblem, formatDate, todayISO, type DerivedProblem, type RedoLog } from "@/lib/schedule";
 import { fetchRemote, loadLocal, pushRemote, saveLocal, type BrainState, type SyncStatus } from "@/lib/store";
 
 export type StatusFilter = "all" | "done" | "due" | "play" | "locked";
+export type BrainFocus = "both" | "dsa" | "dev";
 
 export interface ToastState {
   key: number;
@@ -33,6 +36,8 @@ export default function App() {
   const [topicFilter, setTopicFilter] = useState<TopicId | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [logging, setLogging] = useState<{ title: string } | null>(null);
+  const [brainFocus, setBrainFocus] = useState<BrainFocus>("both");
+  const [fit, setFit] = useState<FitRequest | null>(null);
   const [sync, setSync] = useState<SyncStatus>("booting");
   const cardRef = useRef<HTMLDivElement>(null);
   const nonce = useRef(0);
@@ -133,8 +138,17 @@ export default function App() {
   /* ── Derived data ────────────────────────────────────────────────── */
   const allProblems = useMemo(() => [...seedProblems, ...custom], [custom]);
   const graph = useMemo(() => buildGraph(allProblems), [allProblems]);
+  const devGraph = useMemo(() => buildDevGraph(), []);
   const byTopic = useMemo(() => groupByTopic(allProblems), [allProblems]);
-  const docs = useMemo(() => buildSearchDocs(allProblems), [allProblems]);
+  const docs = useMemo(() => [...buildSearchDocs(allProblems), ...devSearchDocs], [allProblems]);
+  const clusters = useMemo<ClusterInput[]>(
+    () => [
+      { id: "dsa", graph, anchor: { x: -430, y: 0 }, color: "#7fd9a6", personality: "calm" },
+      { id: "dev", graph: devGraph, anchor: { x: 470, y: 0 }, color: "#ff9f43", personality: "playful" },
+    ],
+    [graph, devGraph],
+  );
+  const findNode = useCallback((id: string | null) => (id ? graph.byId.get(id) ?? devGraph.byId.get(id) ?? null : null), [graph, devGraph]);
 
   const derived = useMemo(() => {
     const m = new Map<string, DerivedProblem>();
@@ -169,14 +183,14 @@ export default function App() {
   const passes = useCallback(
     (id: string): boolean => {
       const node = graph.byId.get(id);
-      if (!node) return true;
+      if (!node || node.brain !== "dsa") return true;
       if (topicFilter) {
         if (node.kind === "topic" && node.id !== topicFilter) return false;
         if (node.kind === "problem" && !derived.get(id)!.topics.includes(topicFilter)) return false;
       }
       if (statusFilter === "all") return true;
       if (node.kind === "topic") {
-        const t = topicById.get(node.topicId)!;
+        const t = topicById.get(node.topicId!)!;
         const ids = byTopic.get(t.id) ?? [];
         switch (statusFilter) {
           case "done":
@@ -229,6 +243,9 @@ export default function App() {
         overdueDays: p.state === "due" ? p.overdueDays : undefined,
         dim: !passes(p.id),
       });
+    }
+    for (const [id, d] of devById) {
+      m.set(id, { status: "done", color: DEV_GROUP_COLOR[d.group], dim: false, badge: d.status });
     }
     return m;
   }, [byTopic, derived, passes]);
@@ -300,6 +317,11 @@ export default function App() {
     [custom, log, commit],
   );
 
+  const focusBrain = useCallback((b: BrainFocus) => {
+    setBrainFocus(b);
+    setFit({ brain: b === "both" ? "all" : b, nonce: ++nonce.current });
+  }, []);
+
   const isolate = useCallback((id: TopicId | null) => {
     setTopicFilter((cur) => (cur === id ? null : id));
   }, []);
@@ -329,6 +351,8 @@ export default function App() {
       } else if (e.key === "n") {
         e.preventDefault();
         setLogging({ title: "" });
+      } else if (e.key === "1" || e.key === "2" || e.key === "3") {
+        focusBrain(e.key === "1" ? "both" : e.key === "2" ? "dsa" : "dev");
       } else if (e.key === "Escape") {
         if (selectedId) setSelectedId(null);
         else {
@@ -339,28 +363,31 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, logging]);
+  }, [selectedId, logging, focusBrain]);
 
   useEffect(() => {
     if (!mounted) return;
     document.title = due.length ? `(${due.length}) DSA Brain` : "DSA Brain";
   }, [due.length, mounted]);
 
-  const selectedNode = selectedId ? graph.byId.get(selectedId) ?? null : null;
-  const hoverNode = hoverId ? graph.byId.get(hoverId) ?? null : null;
-  const suggestedTopic: TopicId | null = selectedNode ? selectedNode.topicId : topicFilter;
+  const selectedNode = findNode(selectedId);
+  const hoverNode = findNode(hoverId);
+  const suggestedTopic: TopicId | null = selectedNode?.brain === "dsa" ? selectedNode.topicId ?? null : topicFilter;
+  const dimBrain: BrainId | null = brainFocus === "dsa" ? "dev" : brainFocus === "dev" ? "dsa" : null;
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-ink text-mist">
       <div className="backdrop" aria-hidden />
       {mounted ? (
         <Brain
-          graph={graph}
+          clusters={clusters}
           visuals={visuals}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
           onHover={setHoverId}
           focus={focus}
+          fit={fit}
+          dimBrain={dimBrain}
           cardRef={cardRef}
         />
       ) : (
@@ -381,11 +408,15 @@ export default function App() {
         onPick={(id) => select(id, { zoom: 1.5 })}
         onCurrentTopic={() => select(CURRENT_TOPIC)}
         onLog={(title) => setLogging({ title: title ?? "" })}
+        brainFocus={brainFocus}
+        onBrainFocus={focusBrain}
         hoverLabel={
           hoverNode && hoverNode.id !== selectedId
-            ? hoverNode.kind === "topic"
-              ? topicById.get(hoverNode.topicId)!.name
-              : derived.get(hoverNode.id)!.title
+            ? hoverNode.brain === "dev"
+              ? `${hoverNode.emoji ?? ""} ${hoverNode.label}`
+              : hoverNode.kind === "topic"
+                ? topicById.get(hoverNode.topicId!)!.name
+                : derived.get(hoverNode.id)!.title
             : null
         }
       />

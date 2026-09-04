@@ -14,7 +14,7 @@ export default function Legend({ onLock }: { onLock: () => void }) {
       <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full border-[1.5px]" style={{ borderColor: DIFFICULTY_COLOR.medium }} />med</span>
       <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: DIFFICULTY_COLOR.hard }} />hard</span>
       <span className="mx-1 h-3 w-px bg-white/10" />
-      <span className="normal-case tracking-normal text-mist/35">drag · scroll to zoom · / to search · n to log</span>
+      <span className="normal-case tracking-normal text-mist/35">drag a glow to move a brain · scroll to zoom · / search · n log · 1/2/3 focus</span>
       <button onClick={onLock} className="pointer-events-auto flex items-center gap-1 normal-case tracking-normal text-mist/35 transition hover:text-white" title="Lock this brain">
         <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none">
           <rect x="3" y="7" width="10" height="7" rx="2" stroke="currentColor" strokeWidth="1.3" />
