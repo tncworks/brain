@@ -4,7 +4,7 @@ import nodemailer from "nodemailer";
 import { AUTH_COOKIE, isAuthed, safeEqual } from "@/lib/auth";
 import { cloudStore } from "@/lib/cloud";
 import { problems as seedProblems } from "@/lib/data";
-import { buildNag } from "@/lib/nag";
+import { buildFresh, buildNag, pickFresh } from "@/lib/nag";
 import { deriveProblem, hourInTZ, todayISOInTZ, type DerivedProblem } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,7 @@ async function handle(req: Request) {
   if (!who) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const url = new URL(req.url);
   const preview = url.searchParams.get("preview") === "1";
+  const previewFresh = url.searchParams.get("fresh") === "1";
   const force = url.searchParams.get("force") === "1";
   const dry = url.searchParams.get("dry") === "1" || process.env.NAG_DRY_RUN === "1";
 
@@ -51,15 +52,19 @@ async function handle(req: Request) {
 
   const site = siteUrl(req);
 
+  // ?fresh=1 forces the "new problem" mail even while redos are due (testing / on demand).
+  const fresh = !due.length || previewFresh;
+
   if (preview) {
-    const sample = due.length
-      ? due
-      : [deriveProblem({ ...seedProblems[0], solvedDate: "2000-01-01", redoDate: null, redoStatus: "tracked" }, [], today)];
-    const mail = buildNag(sample, site);
+    if (fresh) {
+      const pick = pickFresh(all);
+      if (!pick) return NextResponse.json({ error: "nothing left to suggest" }, { status: 404 });
+      const mail = buildFresh(pick, site);
+      return new NextResponse(mail.html, { headers: { "content-type": "text/html; charset=utf-8", "x-subject": encodeURIComponent(mail.subject) } });
+    }
+    const mail = buildNag(due, site);
     return new NextResponse(mail.html, { headers: { "content-type": "text/html; charset=utf-8", "x-subject": encodeURIComponent(mail.subject) } });
   }
-
-  if (!due.length) return NextResponse.json({ sent: false, reason: "nothing due", today });
 
   const q = quietHours();
   const hour = hourInTZ(tz);
@@ -73,7 +78,19 @@ async function handle(req: Request) {
   const to = process.env.NAG_TO;
   if (!dry && (!user || !pass || !to)) return NextResponse.json({ sent: false, reason: "mail not configured (GMAIL_USER / GMAIL_APP_PASSWORD / NAG_TO)" }, { status: 503 });
 
-  const mail = buildNag(due, site);
+  let mail: { subject: string; html: string; text: string; cat: string };
+  let picked: string;
+  if (fresh) {
+    const pick = pickFresh(all);
+    if (!pick) return NextResponse.json({ sent: false, reason: "queue empty and nothing left to suggest" });
+    const m = buildFresh(pick, site);
+    mail = m;
+    picked = `LC ${pick.problem.lc} ${pick.problem.title} (${pick.topic})`;
+  } else {
+    const m = buildNag(due, site);
+    mail = m;
+    picked = m.pick.lc ? `LC ${m.pick.lc} ${m.pick.title}` : m.pick.title;
+  }
   const transport = dry
     ? nodemailer.createTransport({ jsonTransport: true })
     : nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
@@ -91,8 +108,9 @@ async function handle(req: Request) {
     sent: !dry,
     dry,
     by: who,
+    kind: fresh ? "fresh" : "redo",
     due: due.length,
-    picked: mail.pick.lc ? `LC ${mail.pick.lc} ${mail.pick.title}` : mail.pick.title,
+    picked,
     subject: mail.subject,
     cat: mail.cat,
     ...(dry ? { message: JSON.parse(String((info as { message?: unknown }).message ?? "{}")) } : { id: info.messageId }),

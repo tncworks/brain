@@ -41,7 +41,7 @@ To bake a logged problem into the repo, open its card and click **Copy for data.
 
 ## Redo nag mails
 
-While anything is due, `/api/nag` mails one random due problem with a cat and a roast. A GitHub Actions cron (`.github/workflows/nag.yml`) pokes it every 3 hours; the endpoint refuses to send inside quiet hours (`NAG_QUIET_HOURS`, default 0–7 IST) or within 2 hours of the last mail, so retries never double-send.
+While anything is due, `/api/nag` mails one random due problem with a cat and a roast. When the queue is empty it switches to a "solve something new" mail: a random problem from `src/lib/suggestions.ts` in a topic you've covered, skipping anything already solved or logged. Preview that mode with `/api/nag?preview=1&fresh=1`. A GitHub Actions cron (`.github/workflows/nag.yml`) pokes it every 3 hours; the endpoint refuses to send inside quiet hours (`NAG_QUIET_HOURS`, default 0–7 IST) or within 2 hours of the last mail, so retries never double-send.
 
 Setup:
 
