@@ -52,9 +52,7 @@ export default function TopBar({ stats, sync, docs, statusFilter, onStatusFilter
         {/* Wordmark */}
         <div className="pointer-events-auto glass flex h-11 items-center gap-3 rounded-full pl-4 pr-4" title={SYNC_HINT[sync]}>
           <SyncDot sync={sync} />
-          <span className="font-serif text-[19px] leading-none tracking-tight text-white">
-            DSA <span className="italic text-mist/80">Brain</span>
-          </span>
+          <span className="font-serif text-[19px] leading-none tracking-tight text-white">Brain</span>
           <span className={`-ml-1 text-[10px] uppercase tracking-[0.14em] ${SYNC_TONE[sync]}`}>{SYNC_LABEL[sync]}</span>
         </div>
 

@@ -148,7 +148,7 @@ function linkDistance(l: GLink) {
     case "prereq":
       return 170;
     case "tree":
-      return l.source.kind === "identity" ? 215 : 58 + rs;
+      return l.source.kind === "identity" ? 235 : l.target.kind === "sub" ? 22 + rs : 56 + rs;
     case "learning":
       return l.source.kind === "identity" ? 190 : 34 + rs;
     case "skill":
@@ -162,7 +162,7 @@ function linkStrength(l: GLink) {
     case "prereq":
       return 0.22;
     case "tree":
-      return l.source.kind === "identity" ? 0.55 : 0.8;
+      return l.source.kind === "identity" ? 0.55 : l.target.kind === "sub" ? 0.9 : 0.8;
     case "learning":
       return 0.5;
     case "skill":
@@ -180,7 +180,9 @@ function charge(n: GNode) {
     case "hub":
       return -520;
     case "item":
-      return n.crown ? -260 : -170;
+      return n.crown ? -240 : -150;
+    case "sub":
+      return -28;
     case "skill":
       return -22;
     case "learning":
@@ -198,7 +200,9 @@ function collidePad(n: GNode) {
     case "hub":
       return 24;
     case "item":
-      return 14;
+      return 12;
+    case "sub":
+      return 5;
     case "skill":
       return 3;
     case "learning":
@@ -383,7 +387,6 @@ export default function Brain(props: BrainProps) {
     const rootStyle = getComputedStyle(document.documentElement);
     const serif = rootStyle.getPropertyValue("--font-fraunces").trim() || "Georgia, serif";
     const sans = rootStyle.getPropertyValue("--font-inter").trim() || "system-ui, sans-serif";
-    const emojiFont = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${sans}`;
 
     /* ── Build clusters ──────────────────────────────────────────── */
     const lives = new Map<BrainId, Live>();
@@ -437,7 +440,7 @@ export default function Brain(props: BrainProps) {
         .force("collide", forceCollide<GNode>().radius((n) => n.r + collidePad(n)).strength(0.85))
         .force("gravity", gravity)
         .velocityDecay(0.42);
-      if (input.personality === "playful") live.sim.force("orbit", orbit);
+      if (nodes.some((n) => n.orbit)) live.sim.force("orbit", orbit);
       live.sim.alpha(1);
       for (let i = 0; i < 320; i++) live.sim.tick();
       live.sim.alpha(0.35).alphaTarget(BASE_ALPHA);
@@ -448,7 +451,11 @@ export default function Brain(props: BrainProps) {
       for (const n of order) bornRef.current.set(n.id, mount + 120 + stagger++ * 22);
     }
     liveRef.current = lives;
-    if (process.env.NODE_ENV === "development") (window as unknown as { __brain?: unknown }).__brain = lives;
+    if (process.env.NODE_ENV === "development") {
+      const w = window as unknown as { __brain?: unknown; __cam?: unknown };
+      w.__brain = lives;
+      w.__cam = camRef.current;
+    }
 
     /* ── Sizing ──────────────────────────────────────────────────── */
     const resize = () => {
@@ -500,33 +507,44 @@ export default function Brain(props: BrainProps) {
       for (const live of lives.values()) if (live.hull.length > 2 && inPolygon(p, live.hull)) return live;
       return null;
     };
-    const burst = (x: number, y: number, colors: string[], n = 18) => {
-      for (let i = 0; i < n; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = 1.5 + Math.random() * 3.5;
-        particlesRef.current.push({
-          x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp - 1.5,
-          life: 0,
-          max: 900 + Math.random() * 500,
-          color: colors[Math.floor(Math.random() * colors.length)],
-          size: 2 + Math.random() * 3,
-          rot: Math.random() * Math.PI,
-          spin: (Math.random() - 0.5) * 0.3,
-          kind: "confetti",
-        });
-      }
-    };
-
     /* ── Pointer ─────────────────────────────────────────────────── */
     let down: { sx: number; sy: number; cx: number; cy: number; node: GNode | null; live: Live | null; hull: Live | null; moved: boolean; lastX: number; lastY: number } | null = null;
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: { d0: number; k0: number; wx: number; wy: number } | null = null;
+    const endDrag = () => {
+      if (!down) return;
+      if (down.node && down.live) {
+        down.node.fx = null;
+        down.node.fy = null;
+        down.live.sim.alphaTarget(BASE_ALPHA);
+      }
+      down = null;
+    };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType === "mouse") return;
-      canvas.setPointerCapture(e.pointerId);
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic or already-released pointer */
+      }
       const sx = e.clientX - sizeRef.current.left;
       const sy = e.clientY - sizeRef.current.top;
+      if (e.pointerType === "touch") {
+        touches.set(e.pointerId, { x: sx, y: sy });
+        if (touches.size === 2) {
+          // second finger: whatever was happening becomes a pinch
+          endDrag();
+          const [a, b] = [...touches.values()];
+          const cam = camRef.current;
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          // remember the world point under the fingers; it stays under them for the whole gesture
+          pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, k0: cam.k, wx: (mx - cam.x) / cam.k, wy: (my - cam.y) / cam.k };
+          canvas.style.cursor = "grabbing";
+          return;
+        }
+        if (touches.size > 2) return;
+      }
       const hit = pick(sx, sy);
       const hull = hit ? null : pickHull(sx, sy);
       down = { sx, sy, cx: camRef.current.x, cy: camRef.current.y, node: hit?.node ?? null, live: hit?.live ?? null, hull, moved: false, lastX: sx, lastY: sy };
@@ -539,6 +557,18 @@ export default function Brain(props: BrainProps) {
     const onPointerMove = (e: PointerEvent) => {
       const sx = e.clientX - sizeRef.current.left;
       const sy = e.clientY - sizeRef.current.top;
+      if (e.pointerType === "touch" && touches.has(e.pointerId)) touches.set(e.pointerId, { x: sx, y: sy });
+      if (pinch && touches.size >= 2) {
+        const [a, b] = [...touches.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const cam = camRef.current;
+        const k = Math.min(MAX_K, Math.max(MIN_K, pinch.k0 * (d / pinch.d0)));
+        cam.k = cam.tk = k;
+        cam.x = cam.tx = mx - pinch.wx * k;
+        cam.y = cam.ty = my - pinch.wy * k;
+        return;
+      }
       if (down) {
         if (!down.moved && Math.hypot(sx - down.sx, sy - down.sy) > 4) down.moved = true;
         if (down.node) {
@@ -579,6 +609,18 @@ export default function Brain(props: BrainProps) {
       canvas.style.cursor = hit ? "pointer" : pickHull(sx, sy) ? "move" : "grab";
     };
     const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        touches.delete(e.pointerId);
+        if (pinch) {
+          if (touches.size < 2) pinch = null;
+          try {
+            canvas.releasePointerCapture(e.pointerId);
+          } catch {
+            /* already released */
+          }
+          return;
+        }
+      }
       if (!down) return;
       const { node, live, moved } = down;
       down = null;
@@ -588,13 +630,7 @@ export default function Brain(props: BrainProps) {
         node.fy = null;
         live.sim.alphaTarget(BASE_ALPHA);
       }
-      if (!moved) {
-        if (node && node.brain === "dev") {
-          const v = propsRef.current.visuals.get(node.id);
-          burst(node.x ?? 0, node.y ?? 0, [v?.color ?? "#ffd166", "#ffd166", "#ff5fa2", "#ff9f43", "#ffffff"], node.kind === "identity" || node.crown ? 34 : 16);
-        }
-        propsRef.current.onSelect(node ? node.id : null);
-      }
+      if (!moved) propsRef.current.onSelect(node ? node.id : null);
       try {
         canvas.releasePointerCapture(e.pointerId);
       } catch {
@@ -697,19 +733,6 @@ export default function Brain(props: BrainProps) {
       ctx.fill();
     };
 
-    const emoji = (text: string, x: number, y: number, size: number, A: number, tilt = 0) => {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(tilt);
-      ctx.font = `${size}px ${emojiFont}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.globalAlpha = A;
-      ctx.fillStyle = "#fff";
-      ctx.fillText(text, 0, size * 0.06);
-      ctx.restore();
-    };
-
     const drawEdge = (l: GLink, t: number, alpha: number, highlighted: boolean, va: NodeVisual, vb: NodeVisual) => {
       const a = l.source, b = l.target;
       const ax = a.x ?? 0, ay = a.y ?? 0, bx = b.x ?? 0, by = b.y ?? 0;
@@ -798,69 +821,9 @@ export default function Brain(props: BrainProps) {
       live.hull = chaikin(convexHull(pts), 2);
     };
 
-    const crossForces = () => {
-      const arr = [...lives.values()];
-      for (let i = 0; i < arr.length; i++) {
-        for (let j = i + 1; j < arr.length; j++) {
-          const A = arr[i], B = arr[j];
-          // membranes: any node near the other brain gets pushed, and pushes back.
-          // We also track how deep the two clouds interpenetrate.
-          let pen = 0;
-          for (const a of A.nodes) {
-            for (const b of B.nodes) {
-              const R = a.r + b.r + 84;
-              const ex = (b.x ?? 0) - (a.x ?? 0), ey = (b.y ?? 0) - (a.y ?? 0);
-              const d2 = ex * ex + ey * ey;
-              if (d2 > R * R) continue;
-              const dd = Math.sqrt(d2) || 1;
-              pen = Math.max(pen, R - dd);
-              const f = (1 - dd / R) * 2.4;
-              const ux = ex / dd, uy = ey / dd;
-              if (a.fx == null) {
-                a.vx = (a.vx ?? 0) - ux * f;
-                a.vy = (a.vy ?? 0) - uy * f;
-              }
-              if (b.fx == null) {
-                b.vx = (b.vx ?? 0) + ux * f;
-                b.vy = (b.vy ?? 0) + uy * f;
-              }
-            }
-          }
-          // whole body: the deeper the contact, the harder both brains recoil along the centroid axis
-          if (pen > 0) {
-            const dx = B.centroid.x - A.centroid.x, dy = B.centroid.y - A.centroid.y;
-            const d = Math.hypot(dx, dy) || 1;
-            const ux = dx / d, uy = dy / d;
-            const push = Math.min(1, pen / 70) * 1.6;
-            A.anchor.vx -= ux * push;
-            A.anchor.vy -= uy * push;
-            B.anchor.vx += ux * push;
-            B.anchor.vy += uy * push;
-          }
-        }
-      }
-      // anchors carry their whole brain with them (rigidly), then damp — that's the springy jellyfish recoil
-      for (const l of arr) {
-        if (Math.abs(l.anchor.vx) + Math.abs(l.anchor.vy) < 0.01) {
-          l.anchor.vx = l.anchor.vy = 0;
-          continue;
-        }
-        l.anchor.x += l.anchor.vx;
-        l.anchor.y += l.anchor.vy;
-        for (const n of l.nodes) {
-          if (n.fx != null) continue;
-          n.x = (n.x ?? 0) + l.anchor.vx;
-          n.y = (n.y ?? 0) + l.anchor.vy;
-        }
-        l.anchor.vx *= 0.9;
-        l.anchor.vy *= 0.9;
-      }
-    };
-
     /* ── Frame ───────────────────────────────────────────────────── */
     let raf = 0;
     let last = performance.now();
-    let sparkT = 0;
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -893,7 +856,6 @@ export default function Brain(props: BrainProps) {
         }
         updateCluster(live);
       }
-      crossForces();
       for (const live of lives.values()) live.sim.tick();
 
       /* active neighbourhood */
@@ -936,7 +898,6 @@ export default function Brain(props: BrainProps) {
 
       /* constellation ring (dev) */
       for (const live of lives.values()) {
-        if (live.personality !== "playful") continue;
         const core = live.nodes.find((n) => n.kind === "identity");
         if (!core) continue;
         const BA = brainA(live.id);
@@ -945,7 +906,7 @@ export default function Brain(props: BrainProps) {
         ctx.arc(cx, cy, SKILL_ORBIT, 0, Math.PI * 2);
         ctx.setLineDash([2, 7]);
         ctx.lineDashOffset = -((t * 6) % 9);
-        ctx.strokeStyle = rgba("#f9c784", 0.16 * BA);
+        ctx.strokeStyle = rgba("#d9b98f", 0.14 * BA);
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.setLineDash([]);
@@ -953,7 +914,7 @@ export default function Brain(props: BrainProps) {
         ctx.beginPath();
         skills.forEach((n, i) => (i ? ctx.lineTo(n.x ?? 0, n.y ?? 0) : ctx.moveTo(n.x ?? 0, n.y ?? 0)));
         ctx.closePath();
-        ctx.strokeStyle = rgba("#f9c784", 0.13 * BA);
+        ctx.strokeStyle = rgba("#d9b98f", 0.1 * BA);
         ctx.lineWidth = 0.8;
         ctx.stroke();
       }
@@ -981,7 +942,6 @@ export default function Brain(props: BrainProps) {
       /* nodes */
       for (const live of lives.values()) {
         const BA = brainA(live.id);
-        const playful = live.personality === "playful";
         for (const n of live.nodes) {
           const v = visuals.get(n.id);
           if (!v) continue;
@@ -999,9 +959,8 @@ export default function Brain(props: BrainProps) {
           const lift = liftPrev + ((isHover || isSel ? 1 : 0) - liftPrev) * 0.18;
           liftRef.current.set(n.id, lift);
 
-          const bob = playful ? Math.sin(t * 1.5 + n.phase) * (n.kind === "skill" ? 1.2 : n.kind === "identity" ? 1 : 2.2) : 0;
           const x = n.x ?? 0;
-          const y = (n.y ?? 0) + bob;
+          const y = n.y ?? 0;
           const r = n.r * scale * (1 + 0.09 * lift);
 
           if (n.brain === "dsa") {
@@ -1102,69 +1061,64 @@ export default function Brain(props: BrainProps) {
               }
             }
           } else {
-            /* ── Dev rendering: warm, shiny, bouncy ── */
-            const tilt = Math.sin(t * 1.2 + n.phase) * 0.1;
-            if (n.kind === "identity") {
-              const pulse = 0.5 + 0.5 * Math.sin(t * 1.4);
-              glow(x, y, r * 0.5, r * 3.2 + pulse * 10 + lift * 10, v.color, (0.32 + pulse * 0.1 + lift * 0.15) * A);
+            /* ── Dev rendering: same language as the DSA brain ── */
+            const ringNode = n.kind === "identity" || n.kind === "hub";
+            if (ringNode) {
+              const learning = n.group === "learning";
+              const glowR = r * (n.kind === "identity" ? 2.6 : 2.4) + lift * 8;
+              glow(x, y, r * 0.4, glowR, v.color, (learning ? 0.08 : n.kind === "identity" ? 0.3 : 0.26) * A + lift * 0.15 * A);
+              if (lift > 0.01) {
+                ctx.save();
+                ctx.shadowColor = rgba(v.color, 0.5 * lift * A);
+                ctx.shadowBlur = 24 * lift;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = rgba(v.color, 0.001);
+                ctx.fill();
+                ctx.restore();
+              }
               ctx.beginPath();
-              ctx.arc(x, y, r + 9, 0, Math.PI * 2);
-              ctx.setLineDash([2, 6]);
-              ctx.lineDashOffset = -((t * 10) % 8);
-              ctx.strokeStyle = rgba(v.color, 0.55 * A);
-              ctx.lineWidth = 1.2;
+              ctx.arc(x, y, r, 0, Math.PI * 2);
+              if (learning) ctx.fillStyle = rgba("#1a1e28", 0.95 * A);
+              else {
+                const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r * 1.1);
+                g.addColorStop(0, rgba(v.color, 0.3 * A));
+                g.addColorStop(1, rgba(v.color, 0.1 * A));
+                ctx.fillStyle = g;
+              }
+              ctx.fill();
+              ctx.strokeStyle = rgba(v.color, (learning ? 0.55 : 0.95) * A);
+              ctx.lineWidth = 1.6;
+              if (learning) ctx.setLineDash([4, 5]);
               ctx.stroke();
               ctx.setLineDash([]);
-              orb(x, y, r, v.color, A, lift);
-              emoji(n.emoji ?? "", x, y, r * 1.15, A, tilt * 0.5);
-            } else if (n.kind === "hub") {
-              const learning = n.group === "learning";
-              if (!learning) glow(x, y, r * 0.5, r * 2.4 + lift * 8, v.color, (0.24 + lift * 0.15) * A);
-              if (learning) orb(x, y, r, v.color, A, lift, { hollow: true, dashed: true });
-              else orb(x, y, r, v.color, A, lift);
-              emoji(n.emoji ?? "", x, y, r * 1.05, (learning ? 0.7 : 1) * A, tilt);
-            } else if (n.kind === "item") {
-              if (n.crown) {
-                const pulse = 0.5 + 0.5 * Math.sin(t * 2.1 + n.phase);
-                glow(x, y, r * 0.5, r * 3.6 + pulse * 12 + lift * 10, "#ffd166", (0.3 + pulse * 0.2 + lift * 0.15) * A);
-                glow(x, y, r * 0.3, r * 2.2, v.color, 0.35 * A);
-                for (let i = 0; i < 2; i++) {
-                  ctx.beginPath();
-                  ctx.arc(x, y, r + 7 + i * 5, 0, Math.PI * 2);
-                  ctx.setLineDash(i ? [1.5, 5] : [6, 6]);
-                  ctx.lineDashOffset = ((i ? -1 : 1) * (t * 14)) % 12;
-                  ctx.strokeStyle = rgba(i ? "#ffffff" : "#ffd166", (i ? 0.35 : 0.7) * A);
-                  ctx.lineWidth = i ? 0.8 : 1.4;
-                  ctx.stroke();
-                }
-                ctx.setLineDash([]);
-                sparkT += dt;
-                if (sparkT > 260 && A > 0.5) {
-                  sparkT = 0;
-                  const a = Math.random() * Math.PI * 2;
-                  particlesRef.current.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, vx: Math.cos(a) * 0.5, vy: Math.sin(a) * 0.5 - 0.6, life: 0, max: 1100, color: Math.random() < 0.5 ? "#ffd166" : "#ffffff", size: 1.4 + Math.random() * 1.6, rot: 0, spin: 0, kind: "spark" });
-                }
-              } else {
-                glow(x, y, r * 0.5, r * 2.3 + lift * 8, v.color, (0.2 + lift * 0.15) * A);
-              }
-              orb(x, y, r, v.color, A, lift);
-              emoji(n.emoji ?? "", x, y, r * 1.1, A, tilt);
-              if (v.badge) {
-                const bc = v.badge === "wip" ? "#f5b53f" : v.badge === "live" ? "#7fd9a6" : "#c6ccdb";
+              orb(x, y, r * 0.34, learning ? "#3a3f4c" : v.color, A, 0);
+              if (n.kind === "identity") {
+                // slow orbit ring — the constellation's rail
                 ctx.beginPath();
-                ctx.arc(x + r * 0.72, y - r * 0.72, 2.6, 0, Math.PI * 2);
-                ctx.fillStyle = rgba(bc, A);
-                ctx.fill();
-                ctx.strokeStyle = `rgba(0,0,0,${0.8 * A})`;
+                ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+                ctx.strokeStyle = rgba(v.color, 0.35 * A);
                 ctx.lineWidth = 1;
                 ctx.stroke();
               }
-            } else if (n.kind === "skill") {
-              glow(x, y, r * 0.3, r * 2.6 + lift * 6, v.color, (0.22 + lift * 0.3) * A);
-              orb(x, y, r, v.color, A, lift);
-            } else {
+            } else if (n.kind === "learning") {
               orb(x, y, r, v.color, A, lift, { hollow: true, dashed: true });
-              emoji(n.emoji ?? "", x, y, r * 1.2, 0.6 * A, tilt);
+            } else {
+              const crownGlow = n.crown ? 0.5 + 0.5 * Math.sin(t * 1.6 + n.phase) : 0;
+              glow(x, y, r * 0.4, r * (n.kind === "sub" || n.kind === "skill" ? 2.2 : 2.6) + lift * 8 + crownGlow * 6, n.crown ? "#e8c574" : v.color, ((n.kind === "sub" || n.kind === "skill" ? 0.16 : 0.22) + crownGlow * 0.22 + lift * 0.15) * A);
+              orb(x, y, r, v.color, A * (n.kind === "sub" ? 0.9 : 1), lift);
+              if (n.crown) {
+                ctx.beginPath();
+                ctx.arc(x, y, r + 4.5, 0, Math.PI * 2);
+                ctx.strokeStyle = rgba("#e8c574", 0.9 * A);
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+                ctx.strokeStyle = rgba("#e8c574", 0.35 * A);
+                ctx.lineWidth = 0.8;
+                ctx.stroke();
+              }
             }
           }
 
@@ -1229,7 +1183,6 @@ export default function Brain(props: BrainProps) {
       const k = cam.k;
       for (const live of lives.values()) {
         const BA = brainA(live.id);
-        const playful = live.personality === "playful";
         for (const n of live.nodes) {
           const v = visuals.get(n.id);
           if (!v) continue;
@@ -1241,9 +1194,8 @@ export default function Brain(props: BrainProps) {
           const inHood = !!hood && hood.has(n.id);
           const dim = v.dim || (!!selectedId && !isSel && !inHood);
           const forced = isSel || isHover;
-          const bob = playful ? Math.sin(t * 1.5 + n.phase) * (n.kind === "skill" ? 1.2 : n.kind === "identity" ? 1 : 2.2) : 0;
           const sx = (n.x ?? 0) * k + cam.x;
-          const sy = ((n.y ?? 0) + bob) * k + cam.y + (n.r * (1 + 0.09 * (liftRef.current.get(n.id) ?? 0)) + (n.kind === "skill" ? 5 : 8)) * k;
+          const sy = (n.y ?? 0) * k + cam.y + (n.r * (1 + 0.09 * (liftRef.current.get(n.id) ?? 0)) + (n.kind === "skill" || n.kind === "sub" ? 5 : 8)) * k;
           if (sx < -160 || sx > w + 160 || sy < -40 || sy > h + 40) continue;
 
           let target = 0;
@@ -1265,36 +1217,42 @@ export default function Brain(props: BrainProps) {
               color = v.status === "due" ? "#ffd58a" : "#c6ccdb";
               break;
             case "identity":
-              target = 1;
+              target = 0.95;
               pri = 100;
-              size = 16;
+              size = 15;
               serifFont = true;
-              color = "#fff3d1";
+              color = "#eef1f8";
               break;
             case "hub":
-              target = n.group === "learning" ? 0.7 : 0.95;
+              target = n.group === "learning" ? 0.6 : 0.92;
               pri = 80;
-              size = 14;
+              size = 13.5;
               serifFont = true;
-              color = "#ffffff";
+              color = "#eef1f8";
               break;
             case "item":
-              target = n.crown ? 1 : forced || inHood ? 0.95 : fade(k, 0.5, 0.85) * 0.9;
+              target = n.crown ? 0.95 : forced || inHood ? 0.9 : fade(k, 0.55, 0.9) * 0.8;
               pri = n.crown ? 70 : 60;
-              size = n.crown ? 12.5 : 11.5;
-              color = n.crown ? "#ffe3a3" : "#f3e9df";
+              size = n.crown ? 12 : 11;
+              color = n.crown ? "#f3dfae" : "#c6ccdb";
+              break;
+            case "sub":
+              target = forced || inHood ? 0.85 : fade(k, 1.0, 1.5) * 0.7;
+              pri = 25;
+              size = 10;
+              color = "#aab1c0";
               break;
             case "learning":
-              target = forced || inHood ? 0.8 : fade(k, 0.6, 0.95) * 0.7;
+              target = forced || inHood ? 0.8 : fade(k, 0.6, 0.95) * 0.65;
               pri = 40;
               size = 10.5;
-              color = "#b9ada3";
+              color = "#9aa1b3";
               break;
             case "skill":
-              target = forced || inHood ? 0.95 : fade(k, 0.95, 1.4) * 0.8;
+              target = forced || inHood ? 0.9 : fade(k, 0.95, 1.4) * 0.75;
               pri = 20;
               size = 10;
-              color = "#f9dcb8";
+              color = "#d9c7a8";
               break;
           }
           if (forced) {

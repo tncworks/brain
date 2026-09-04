@@ -4,20 +4,23 @@ import { useState } from "react";
 import { prerequisites, REDO_LADDER, type TopicId } from "@/lib/data";
 import { DIFFICULTY_COLOR, STATUS_COLOR, STATUS_LABEL, problemVisualStatus, topicById, topicVisualStatus, type GNode } from "@/lib/graph";
 import { formatDate, problemToDataLine, type DerivedProblem } from "@/lib/schedule";
-import { DEV_GROUP_COLOR, DEV_GROUP_LABEL, devNodes } from "@/lib/data-dev";
-import { devById, devId } from "@/lib/graph-dev";
+import { DEV_GROUP_COLOR, DEV_GROUP_LABEL, DEV_KIND_LABEL, type DevNodeDef } from "@/lib/data-dev";
+import { devId } from "@/lib/graph-dev";
 
 interface Props {
   cardRef: React.RefObject<HTMLDivElement | null>;
   node: GNode;
   derived: Map<string, DerivedProblem>;
   byTopic: Map<TopicId, string[]>;
+  devIdx: Map<string, DevNodeDef>;
   today: string;
   topicFilter: TopicId | null;
   onSelect: (id: string) => void;
   onIsolate: (id: TopicId | null) => void;
   onMarkRedone: (id: string) => void;
   onDelete: (id: string) => void;
+  onAddDev: (parent: string) => void;
+  onDeleteDev: (id: string) => void;
   onClose: () => void;
 }
 
@@ -330,41 +333,51 @@ function Chips({ list, onSelect, empty }: { list: { id: TopicId; short: string; 
 const STATUS_TEXT = { live: "live", shipped: "shipped", wip: "in progress" } as const;
 const STATUS_COLOR_DEV = { live: "#7fd9a6", shipped: "#c6ccdb", wip: "#f5b53f" } as const;
 
-function DevBody({ node, onSelect }: Props) {
-  const d = devById.get(node.id);
+function DevBody({ node, devIdx, onSelect, onAddDev, onDeleteDev }: Props) {
+  const d = devIdx.get(node.id);
+  const [confirm, setConfirm] = useState(false);
   if (!d) return null;
+  const all = [...devIdx.values()];
   const color = DEV_GROUP_COLOR[d.group];
-  const children = devNodes.filter((x) => x.parent === d.id);
-  const usedIn = d.kind === "skill" ? devNodes.filter((x) => x.skills?.includes(d.id)) : [];
-  const skills = (d.skills ?? []).map((id) => devNodes.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
-  const parent = d.parent ? devNodes.find((x) => x.id === d.parent) : null;
+  const children = all.filter((x) => x.parent === d.id);
+  const usedIn = d.kind === "skill" ? all.filter((x) => x.skills?.includes(d.id)) : [];
+  const skills = (d.skills ?? []).map((id) => all.find((x) => x.id === id)).filter((x): x is DevNodeDef => !!x);
+  const parent = d.parent ? all.find((x) => x.id === d.parent) : null;
+  const canHaveChildren = d.kind === "identity" || d.kind === "hub" || d.kind === "item";
   const counts = {
-    projects: devNodes.filter((x) => x.group === "projects" && x.kind === "item").length,
-    oss: devNodes.filter((x) => x.group === "oss" && x.kind === "item").length,
-    skills: devNodes.filter((x) => x.kind === "skill").length,
-    community: devNodes.filter((x) => x.group === "community" && x.kind === "item").length,
+    projects: all.filter((x) => (x.group === "projects" || x.group === "campus") && x.kind === "item").length,
+    oss: all.filter((x) => x.group === "oss" && x.kind === "item").length,
+    community: all.filter((x) => x.group === "community" && x.kind === "item").length,
+    skills: all.filter((x) => x.kind === "skill").length,
   };
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-1.5 pr-8">
-        <Pill color={color}>{DEV_GROUP_LABEL[d.group]}</Pill>
-        {d.crown && <Pill color="#ffd166">🔥 crown jewel</Pill>}
+        <Pill color={color}>{d.kind === "identity" ? "Core" : DEV_GROUP_LABEL[d.group]}</Pill>
+        {d.kind !== "identity" && d.kind !== "hub" && d.kind !== "item" && (
+          <Pill color="#c6ccdb" hollow>
+            {DEV_KIND_LABEL[d.kind]}
+          </Pill>
+        )}
+        {d.crown && <Pill color="#e8c574">crown jewel</Pill>}
         {d.status && (
           <Pill color={STATUS_COLOR_DEV[d.status]} hollow>
             {STATUS_TEXT[d.status]}
           </Pill>
         )}
+        {d.custom && (
+          <Pill color="#c6ccdb" hollow>
+            added here
+          </Pill>
+        )}
       </div>
       {parent && (
         <button onClick={() => onSelect(devId(parent.id))} className="text-[11px] font-medium tracking-[0.12em] text-mist/45 transition hover:text-white">
-          {parent.emoji} {parent.label.toUpperCase()} ↗
+          {parent.label.toUpperCase()} ↗
         </button>
       )}
-      <h2 className="mt-0.5 flex items-center gap-2 font-serif text-[26px] leading-[1.1] text-white">
-        <span className="text-[28px]">{d.emoji}</span>
-        {d.label}
-      </h2>
+      <h2 className="mt-0.5 font-serif text-[26px] leading-[1.1] text-white">{d.label}</h2>
       {d.meta && <div className="mt-1.5 text-[12.5px] text-mist/60">{d.meta}</div>}
       {d.blurb && <p className="mt-2.5 text-[13.5px] leading-relaxed text-mist/80">{d.blurb}</p>}
 
@@ -394,7 +407,8 @@ function DevBody({ node, onSelect }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {skills.map((sk) => (
               <button key={sk.id} onClick={() => onSelect(devId(sk.id))} className="rounded-full border border-white/10 px-2.5 py-1 text-[11.5px] text-mist/80 transition hover:border-white/25 hover:text-white">
-                {sk.emoji} {sk.label}
+                <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: DEV_GROUP_COLOR.skills }} />
+                {sk.label}
               </button>
             ))}
           </div>
@@ -408,7 +422,7 @@ function DevBody({ node, onSelect }: Props) {
             {usedIn.map((x) => (
               <li key={x.id}>
                 <button onClick={() => onSelect(devId(x.id))} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition hover:bg-white/6">
-                  <span className="text-[15px]">{x.emoji}</span>
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: DEV_GROUP_COLOR[x.group] }} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] text-mist/90">{x.label}</span>
                   <span className="text-[10.5px] text-mist/40">{DEV_GROUP_LABEL[x.group]}</span>
                 </button>
@@ -420,12 +434,12 @@ function DevBody({ node, onSelect }: Props) {
 
       {children.length > 0 && (
         <div className="mt-4">
-          <Label>{d.kind === "identity" ? "Branches" : "Inside"}</Label>
+          <Label>{d.kind === "identity" ? "Branches" : d.kind === "hub" ? "Inside" : "Details"}</Label>
           <ul className="-mx-2 flex flex-col">
             {children.map((x) => (
               <li key={x.id}>
                 <button onClick={() => onSelect(devId(x.id))} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition hover:bg-white/6">
-                  <span className="text-[15px]">{x.emoji}</span>
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: DEV_GROUP_COLOR[x.group], opacity: x.kind === "sub" ? 0.7 : 1 }} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12.5px] text-mist/90">{x.label}</span>
                     {x.meta && <span className="block truncate text-[10.5px] text-mist/45">{x.meta}</span>}
@@ -438,10 +452,40 @@ function DevBody({ node, onSelect }: Props) {
         </div>
       )}
 
-      {d.url && (
-        <a href={d.url} target="_blank" rel="noreferrer" className="mt-4 flex h-10 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-ink transition hover:brightness-110" style={{ background: color }}>
-          {d.url.includes("github.com") ? "GitHub" : "Open"} <span className="text-[11px] opacity-70">↗</span>
-        </a>
+      <div className="mt-4 flex gap-2">
+        {canHaveChildren && (
+          <button onClick={() => onAddDev(d.id)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-white/12 text-[13px] font-medium text-white transition hover:bg-white/8">
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            Add under this
+          </button>
+        )}
+        {d.url && (
+          <a href={d.url} target="_blank" rel="noreferrer" className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-ink transition hover:brightness-110" style={{ background: color }}>
+            {d.url.includes("github.com") ? "GitHub" : "Open"} <span className="text-[11px] opacity-70">↗</span>
+          </a>
+        )}
+      </div>
+
+      {d.custom && (
+        <div className="mt-3 flex items-center justify-end gap-2 text-[11.5px]">
+          {confirm ? (
+            <span className="flex items-center gap-2">
+              <span className="text-mist/50">Remove this node{children.length ? " and everything under it" : ""}?</span>
+              <button onClick={() => onDeleteDev(node.id)} className="rounded-full bg-hard/20 px-2.5 py-1 text-hard transition hover:bg-hard hover:text-ink">
+                Remove
+              </button>
+              <button onClick={() => setConfirm(false)} className="text-mist/50 hover:text-white">
+                Keep
+              </button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-mist/40 transition hover:text-hard">
+              Remove
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

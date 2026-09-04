@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import UnlockForm from "./UnlockForm";
 
-export const metadata: Metadata = { title: "DSA Brain · locked", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Brain · locked", robots: { index: false, follow: false } };
 
 export default function UnlockPage() {
   return (

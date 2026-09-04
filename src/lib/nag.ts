@@ -107,7 +107,7 @@ export function buildNag(due: DerivedProblem[], siteUrl: string): NagMail {
 
   const html = `<!doctype html><html><body style="margin:0;background:#000;color:#c6ccdb;font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:28px 20px">
-  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7fd9a6">DSA Brain · redo alert</div>
+  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7fd9a6">Brain · redo alert</div>
   <p style="font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.2;margin:14px 0 8px;color:#fff">${esc(opener)}</p>
   <p style="font-size:20px;line-height:1.4;font-weight:600;margin:0 0 20px;color:#fff">${esc(roast)}</p>
 
@@ -231,7 +231,7 @@ export function buildFresh(pick: FreshPick, siteUrl: string): FreshMail {
 
   const html = `<!doctype html><html><body style="margin:0;background:#000;color:#c6ccdb;font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:28px 20px">
-  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6ea6ff">DSA Brain · new problem</div>
+  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6ea6ff">Brain · new problem</div>
   <p style="font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.2;margin:14px 0 8px;color:#fff">${esc(opener)}</p>
   <p style="font-size:20px;line-height:1.4;font-weight:600;margin:0 0 20px;color:#fff">${esc(roast)}</p>
 

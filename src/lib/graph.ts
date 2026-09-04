@@ -52,7 +52,7 @@ export function problemVisualStatus(p: DerivedProblem): VisualStatus {
 /* ── Graph structure ───────────────────────────────────────────────────── */
 
 export type BrainId = "dsa" | "dev";
-export type NodeKind = "topic" | "problem" | "identity" | "hub" | "item" | "skill" | "learning";
+export type NodeKind = "topic" | "problem" | "identity" | "hub" | "item" | "sub" | "skill" | "learning";
 
 export interface GNode extends SimulationNodeDatum {
   id: string;

@@ -8,10 +8,11 @@ import RedoTray from "./RedoTray";
 import Legend from "./Legend";
 import Toast from "./Toast";
 import LogSolve from "./LogSolve";
+import AddDevNode from "./AddDevNode";
 import { CURRENT_TOPIC, problems as seedProblems, topics, type Problem, type TopicId } from "@/lib/data";
 import { STATUS_COLOR, buildGraph, buildSearchDocs, groupByTopic, problemVisualStatus, topicById, topicVisualStatus, type BrainId } from "@/lib/graph";
-import { buildDevGraph, devById, devSearchDocs } from "@/lib/graph-dev";
-import { DEV_GROUP_COLOR } from "@/lib/data-dev";
+import { buildDevGraph, buildDevSearchDocs, devIndex } from "@/lib/graph-dev";
+import { DEV_GROUP_COLOR, devNodes as seedDevNodes, type DevNodeDef } from "@/lib/data-dev";
 import { deriveProblem, formatDate, todayISO, type DerivedProblem, type RedoLog } from "@/lib/schedule";
 import { fetchRemote, loadLocal, pushRemote, saveLocal, type BrainState, type SyncStatus } from "@/lib/store";
 
@@ -29,6 +30,8 @@ export default function App() {
   const [today, setToday] = useState("2000-01-01");
   const [log, setLog] = useState<RedoLog>({});
   const [custom, setCustom] = useState<Problem[]>([]);
+  const [customDev, setCustomDev] = useState<DevNodeDef[]>([]);
+  const [addingDev, setAddingDev] = useState<{ parent: string } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
@@ -43,7 +46,7 @@ export default function App() {
   const nonce = useRef(0);
 
   /* ── Persistence: local cache + cloud document, newer updatedAt wins ── */
-  const stateRef = useRef<BrainState>({ redos: {}, problems: [], updatedAt: 0 });
+  const stateRef = useRef<BrainState>({ redos: {}, problems: [], devNodes: [], updatedAt: 0 });
   const pushTimer = useRef<number | null>(null);
   const backendRef = useRef<"redis" | "memory" | null>(null);
   const okStatus = () => (backendRef.current === "memory" ? "dev" : "synced");
@@ -52,6 +55,7 @@ export default function App() {
     stateRef.current = s;
     setLog(s.redos);
     setCustom(s.problems.map((p) => ({ ...p, custom: true })));
+    setCustomDev((s.devNodes ?? []).map((d) => ({ ...d, custom: true })));
     saveLocal(s);
   }, []);
 
@@ -75,11 +79,12 @@ export default function App() {
   );
 
   const commit = useCallback(
-    (patch: Partial<Pick<BrainState, "redos" | "problems">>) => {
+    (patch: Partial<Pick<BrainState, "redos" | "problems" | "devNodes">>) => {
       const next: BrainState = { ...stateRef.current, ...patch, updatedAt: Date.now() };
       stateRef.current = next;
       if (patch.redos) setLog(patch.redos);
       if (patch.problems) setCustom(patch.problems);
+      if (patch.devNodes) setCustomDev(patch.devNodes.map((d) => ({ ...d, custom: true })));
       saveLocal(next);
       if (pushTimer.current) window.clearTimeout(pushTimer.current);
       pushTimer.current = window.setTimeout(() => push(next), 350);
@@ -113,6 +118,7 @@ export default function App() {
     stateRef.current = local;
     setLog(local.redos);
     setCustom(local.problems.map((p) => ({ ...p, custom: true })));
+    setCustomDev((local.devNodes ?? []).map((d) => ({ ...d, custom: true })));
     setMounted(true);
     void refresh();
   }, [refresh]);
@@ -138,13 +144,18 @@ export default function App() {
   /* ── Derived data ────────────────────────────────────────────────── */
   const allProblems = useMemo(() => [...seedProblems, ...custom], [custom]);
   const graph = useMemo(() => buildGraph(allProblems), [allProblems]);
-  const devGraph = useMemo(() => buildDevGraph(), []);
+  const allDev = useMemo(() => {
+    const seedIds = new Set(seedDevNodes.map((d) => d.id));
+    return [...seedDevNodes, ...customDev.filter((d) => !seedIds.has(d.id))];
+  }, [customDev]);
+  const devGraph = useMemo(() => buildDevGraph(allDev), [allDev]);
+  const devIdx = useMemo(() => devIndex(allDev), [allDev]);
   const byTopic = useMemo(() => groupByTopic(allProblems), [allProblems]);
-  const docs = useMemo(() => [...buildSearchDocs(allProblems), ...devSearchDocs], [allProblems]);
+  const docs = useMemo(() => [...buildSearchDocs(allProblems), ...buildDevSearchDocs(allDev)], [allProblems, allDev]);
   const clusters = useMemo<ClusterInput[]>(
     () => [
       { id: "dsa", graph, anchor: { x: -430, y: 0 }, color: "#7fd9a6", personality: "calm" },
-      { id: "dev", graph: devGraph, anchor: { x: 470, y: 0 }, color: "#ff9f43", personality: "playful" },
+      { id: "dev", graph: devGraph, anchor: { x: 520, y: 0 }, color: "#e9a05a", personality: "calm" },
     ],
     [graph, devGraph],
   );
@@ -244,11 +255,11 @@ export default function App() {
         dim: !passes(p.id),
       });
     }
-    for (const [id, d] of devById) {
+    for (const [id, d] of devIdx) {
       m.set(id, { status: "done", color: DEV_GROUP_COLOR[d.group], dim: false, badge: d.status });
     }
     return m;
-  }, [byTopic, derived, passes]);
+  }, [byTopic, derived, passes, devIdx]);
 
   /* ── Actions ─────────────────────────────────────────────────────── */
   const select = useCallback(
@@ -317,6 +328,45 @@ export default function App() {
     [custom, log, commit],
   );
 
+  const addDevNode = useCallback(
+    (d: DevNodeDef) => {
+      commit({ devNodes: [...customDev.map(({ custom: _c, ...rest }) => rest), d] });
+      setAddingDev(null);
+      const id = `dev:${d.id}`;
+      setSelectedId(id);
+      setFocus({ id, nonce: ++nonce.current, color: DEV_GROUP_COLOR[d.group], zoom: 1.5 });
+      setToast({ key: Date.now(), text: `${d.label} added to the dev brain` });
+    },
+    [commit, customDev],
+  );
+
+  const deleteDevNode = useCallback(
+    (id: string) => {
+      const raw = id.replace(/^dev:/, "");
+      const removed = customDev.find((d) => d.id === raw);
+      if (!removed) return;
+      // children of a removed node go with it
+      const gone = new Set<string>([raw]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const d of customDev) if (d.parent && gone.has(d.parent) && !gone.has(d.id)) { gone.add(d.id); grew = true; }
+      }
+      const next = customDev.filter((d) => !gone.has(d.id)).map(({ custom: _c, ...rest }) => rest);
+      commit({ devNodes: next });
+      setSelectedId(null);
+      setToast({
+        key: Date.now(),
+        text: `${removed.label} removed${gone.size > 1 ? ` (+${gone.size - 1} under it)` : ""}`,
+        undo: () => {
+          commit({ devNodes: customDev.map(({ custom: _c, ...rest }) => rest) });
+          setToast(null);
+        },
+      });
+    },
+    [commit, customDev],
+  );
+
   const focusBrain = useCallback((b: BrainFocus) => {
     setBrainFocus(b);
     setFit({ brain: b === "both" ? "all" : b, nonce: ++nonce.current });
@@ -344,7 +394,7 @@ export default function App() {
         document.getElementById("brain-search")?.focus();
         return;
       }
-      if (typing || logging) return;
+      if (typing || logging || addingDev) return;
       if (e.key === "/") {
         e.preventDefault();
         document.getElementById("brain-search")?.focus();
@@ -363,11 +413,11 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, logging, focusBrain]);
+  }, [selectedId, logging, addingDev, focusBrain]);
 
   useEffect(() => {
     if (!mounted) return;
-    document.title = due.length ? `(${due.length}) DSA Brain` : "DSA Brain";
+    document.title = due.length ? `(${due.length}) Brain` : "Brain";
   }, [due.length, mounted]);
 
   const selectedNode = findNode(selectedId);
@@ -413,7 +463,7 @@ export default function App() {
         hoverLabel={
           hoverNode && hoverNode.id !== selectedId
             ? hoverNode.brain === "dev"
-              ? `${hoverNode.emoji ?? ""} ${hoverNode.label}`
+              ? hoverNode.label
               : hoverNode.kind === "topic"
                 ? topicById.get(hoverNode.topicId!)!.name
                 : derived.get(hoverNode.id)!.title
@@ -428,12 +478,15 @@ export default function App() {
           node={selectedNode}
           derived={derived}
           byTopic={byTopic}
+          devIdx={devIdx}
           today={today}
           topicFilter={topicFilter}
           onSelect={(id) => select(id)}
           onIsolate={isolate}
           onMarkRedone={markRedone}
           onDelete={deleteProblem}
+          onAddDev={(parent) => setAddingDev({ parent })}
+          onDeleteDev={deleteDevNode}
           onClose={() => setSelectedId(null)}
         />
       )}
@@ -453,6 +506,7 @@ export default function App() {
       {toast && <Toast toast={toast} onDone={() => setToast(null)} />}
 
       {logging && <LogSolve initialTitle={logging.title} suggestedTopic={suggestedTopic} onClose={() => setLogging(null)} onSubmit={addProblem} />}
+      {addingDev && <AddDevNode all={allDev} parent={addingDev.parent} onClose={() => setAddingDev(null)} onSubmit={addDevNode} />}
     </div>
   );
 }

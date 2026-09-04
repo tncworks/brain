@@ -4,11 +4,14 @@
  * the newer `updatedAt` wins.
  */
 import type { Problem } from "./data";
+import type { DevNodeDef } from "./data-dev";
 import { PROBLEMS_KEY, STORAGE_KEY, loadCustomProblems, loadRedoLog, type RedoLog } from "./schedule";
 
 export interface BrainState {
   redos: RedoLog;
   problems: Problem[];
+  /** Dev-journey nodes added in the app (seed nodes live in data-dev.ts). */
+  devNodes: DevNodeDef[];
   updatedAt: number;
 }
 
@@ -23,7 +26,7 @@ export type SyncStatus =
 export const STATE_KEY = "dsa-brain:state:v1";
 
 export function loadLocal(): BrainState {
-  if (typeof window === "undefined") return { redos: {}, problems: [], updatedAt: 0 };
+  if (typeof window === "undefined") return { redos: {}, problems: [], devNodes: [], updatedAt: 0 };
   try {
     const raw = window.localStorage.getItem(STATE_KEY);
     if (raw) {
@@ -31,6 +34,7 @@ export function loadLocal(): BrainState {
       return {
         redos: s.redos && typeof s.redos === "object" ? s.redos : {},
         problems: Array.isArray(s.problems) ? s.problems : [],
+        devNodes: Array.isArray(s.devNodes) ? s.devNodes : [],
         updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : 0,
       };
     }
@@ -41,7 +45,7 @@ export function loadLocal(): BrainState {
   const redos = loadRedoLog();
   const problems = loadCustomProblems();
   const had = Object.keys(redos).length > 0 || problems.length > 0;
-  const migrated: BrainState = { redos, problems, updatedAt: had ? Date.now() : 0 };
+  const migrated: BrainState = { redos, problems, devNodes: [], updatedAt: had ? Date.now() : 0 };
   if (had) saveLocal(migrated);
   return migrated;
 }

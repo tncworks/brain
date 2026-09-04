@@ -96,7 +96,7 @@ async function handle(req: Request) {
     : nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
 
   const info = await transport.sendMail({
-    from: `"DSA Brain" <${user ?? "dsa-brain@localhost"}>`,
+    from: `"Brain" <${user ?? "brain@localhost"}>`,
     to: to ?? "dry-run@localhost",
     subject: mail.subject,
     text: mail.text,

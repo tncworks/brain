@@ -1,6 +1,6 @@
-# DSA Brain
+# Brain
 
-A force-directed knowledge graph of DSA prep. Topics and problems are neurons; membership and prerequisite edges are synapses. Redo-due problems pulse amber until you mark them redone.
+Two force-directed knowledge graphs on one canvas: DSA prep, and the developer journey. Topics and problems are neurons; membership and prerequisite edges are synapses. Redo-due problems pulse amber until you mark them redone.
 
 ## Run
 
@@ -54,9 +54,13 @@ Preview the mail in a browser while logged in: `/api/nag?preview=1`. `/api/nag?d
 
 ## Two brains, one canvas
 
-The DSA brain (green, disciplined) and the Developer Journey brain (warm, playful) each run their own force simulation with their own centre of gravity. Drag a brain by its territory glow: when the two get close their membranes push back and both bodies recoil, so they never merge. Focus one with the **Both / DSA / Dev** toggle or keys `1` `2` `3`; the other dims.
+The DSA brain (green, disciplined) and the Developer Journey brain (warm, playful) each run their own force simulation with their own centre of gravity. Drag a brain by its territory glow. Focus one with the **Both / DSA / Dev** toggle or keys `1` `2` `3`; the other dims.
 
-Dev brain data lives in `src/lib/data-dev.ts`: the identity node, hubs (Open Source, Projects, Community, Next up), items under each hub, a skills constellation that orbits the core, and dashed learning-next nodes. Append a `DevNodeDef` and it appears; list `skills` on an item to get constellation lines on hover.
+Dev brain seed data lives in `src/lib/data-dev.ts`: the core, hubs (Open Source, Projects, Campus Services, Community, Next up), items under each hub, `sub` detail nodes under items, a skills constellation that orbits the core, and dashed learning-next nodes. Append a `DevNodeDef` and it appears; list `skills` on an item to get constellation lines on hover.
+
+Nodes you add inside the app (**Add under this** on any core, hub or item card) are stored in the database as part of the synced document, so they follow you across devices. Removing one removes everything under it, with undo.
+
+Two-finger pinch zooms on touch screens; drag a brain by its territory glow.
 
 ## Adding data
 

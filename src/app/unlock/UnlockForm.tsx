@@ -57,9 +57,7 @@ export default function UnlockForm() {
         <span className={`absolute inset-0 rounded-full ${open ? "" : "animate-ping"}`} style={{ background: "radial-gradient(circle, rgba(127,217,166,.18), transparent 60%)", animationDuration: "2.6s" }} />
       </div>
 
-      <h1 className="font-serif text-[30px] leading-none tracking-tight text-white">
-        DSA <span className="italic text-mist/80">Brain</span>
-      </h1>
+      <h1 className="font-serif text-[30px] leading-none tracking-tight text-white">Brain</h1>
       <p className="mt-2 text-[13px] text-mist/50">{open ? "Welcome back." : "This brain is private."}</p>
 
       <div

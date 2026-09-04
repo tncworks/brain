@@ -6,8 +6,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
-  title: "DSA Brain",
-  description: "A living knowledge graph of your DSA prep — topics, problems, and the redos your memory is quietly asking for.",
+  title: "Brain",
+  description: "A living knowledge graph: DSA prep on one side, the developer journey on the other.",
 };
 
 export const viewport: Viewport = {
