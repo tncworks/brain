@@ -96,7 +96,7 @@ export const topics: Topic[] = [
   { id: "recursion", name: "Recursion", short: "Recursion", status: "next", lobe: "recursion", blurb: "Define the problem in terms of a smaller version of itself. Trust the call." },
   { id: "backtracking", name: "Backtracking", short: "Backtracking", status: "locked", lobe: "recursion", blurb: "Recursion with undo. Explore, commit, retreat — subsets, permutations, N-Queens." },
   { id: "dp", name: "Dynamic Programming", short: "DP", status: "locked", lobe: "recursion", blurb: "Recursion with memory. Overlapping subproblems, optimal substructure." },
-  { id: "bit-manipulation", name: "Bit Manipulation", short: "Bits", status: "locked", lobe: "foundations", blurb: "XOR tricks, masks, popcount. Small numbers, big leverage." },
+  { id: "bit-manipulation", name: "Bit Manipulation", short: "Bits", status: "in-progress", lobe: "foundations", blurb: "XOR tricks, masks, popcount. Small numbers, big leverage." },
 ];
 
 /** Directed prerequisite edges: [from, to] means `from` unlocks `to`. */
